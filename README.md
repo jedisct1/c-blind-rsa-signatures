@@ -34,4 +34,4 @@ This implementation is compatible with OpenSSL and BoringSSL.
     RSA_BLIND_SECRET_deinit(&secret);
 ```
 
-The current API embraces the OpenSSL/BoringSSL style and conventions. In particular, functions return `1` on success and `0` on error.
+The current API follows the OpenSSL/BoringSSL style and conventions. In particular, functions return `1` on success and `0` on error.
