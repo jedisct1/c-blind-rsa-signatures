@@ -121,6 +121,7 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret_, RSA *rsa,
     if (BN_mod_exp(x, r, RSA_get0_e(rsa), RSA_get0_n(rsa), bn_ctx) != 1) {
         return 0;
     }
+    BN_clear(r);
     if (BN_mod_mul(blind_m, m, x, RSA_get0_n(rsa), bn_ctx) != 1) {
         return 0;
     }
