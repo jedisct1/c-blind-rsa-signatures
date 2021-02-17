@@ -92,20 +92,22 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret_, RSA *rsa,
 
     // Compute a blind factor and its inverse
 
-    BIGNUM *r      = BN_CTX_get(bn_ctx);
-    BIGNUM *secret = BN_CTX_get(bn_ctx);
-    if (r == NULL || secret == NULL) {
+    BIGNUM *secret_inv = BN_CTX_get(bn_ctx);
+    BIGNUM *secret     = BN_CTX_get(bn_ctx);
+    if (secret_inv == NULL || secret == NULL) {
         return 0;
     }
     for (;;) {
-        if (BN_rand_range(r, RSA_get0_n(rsa)) != 1) {
+        if (BN_rand_range(secret_inv, RSA_get0_n(rsa)) != 1) {
             return 0;
         }
-        if (BN_is_zero(r) || BN_is_one(r) || BN_cmp(r, RSA_get0_p(rsa)) == 0 ||
-            BN_cmp(r, RSA_get0_q(rsa)) == 0) {
+        if (BN_is_zero(secret_inv) || BN_is_one(secret_inv) ||
+            BN_cmp(secret_inv, RSA_get0_p(rsa)) == 0 ||
+            BN_cmp(secret_inv, RSA_get0_q(rsa)) == 0) {
             continue;
         }
-        if (BN_mod_inverse(secret, r, RSA_get0_n(rsa), bn_ctx) == NULL) {
+        if (BN_mod_inverse(secret, secret_inv, RSA_get0_n(rsa), bn_ctx) ==
+            NULL) {
             continue;
         }
         break;
@@ -118,10 +120,11 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret_, RSA *rsa,
     if (x == NULL || blind_m == NULL) {
         return 0;
     }
-    if (BN_mod_exp(x, r, RSA_get0_e(rsa), RSA_get0_n(rsa), bn_ctx) != 1) {
+    if (BN_mod_exp(x, secret_inv, RSA_get0_e(rsa), RSA_get0_n(rsa), bn_ctx) !=
+        1) {
         return 0;
     }
-    BN_clear(r);
+    BN_clear(secret_inv);
     if (BN_mod_mul(blind_m, m, x, RSA_get0_n(rsa), bn_ctx) != 1) {
         return 0;
     }
