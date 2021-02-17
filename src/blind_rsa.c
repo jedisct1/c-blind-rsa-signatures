@@ -46,6 +46,7 @@ RSA_BLIND_MESSAGE_init(RSA_BLIND_MESSAGE *blind_message, size_t modulus_bytes)
 void
 RSA_BLIND_SECRET_deinit(RSA_BLIND_SECRET *secret)
 {
+    OPENSSL_cleanse(secret->secret, secret->secret_len);
     OPENSSL_free(secret->secret);
     secret->secret = NULL;
 }

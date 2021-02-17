@@ -27,7 +27,6 @@ This implementation is compatible with OpenSSL and BoringSSL.
     // Verify the signature
 
     assert(RSA_blind_verify(&blind_sig, &blind_secret, rsa, msg, msg_len) == 1);
-
     RSA_BLIND_SECRET_deinit(&blind_secret);
     RSA_BLIND_SIGNATURE_deinit(&blind_sig);
 ```
