@@ -52,6 +52,10 @@ main(void)
     // The blind message should not be sent to the verifier.
 
     assert(RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len) == 1);
+
+    // A different message with the same signature should fail.
+    assert(RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len - 1) == 0);
+
     RSA_BLIND_SECRET_deinit(&secret);
     RSA_BLIND_SIGNATURE_deinit(&blind_sig);
 

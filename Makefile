@@ -1,6 +1,6 @@
 all: test
 
-test:
-	$(CC) -Wall -Isrc -I/usr/local/opt/openssl/include -L/usr/local/opt/openssl/lib -o test src/*.c -lcrypto
+test: src/blind_rsa.c src/blind_rsa.h src/test.c
+	$(CC) -Wall -Isrc -I/usr/local/opt/openssl/include -I/usr/local/include -L/usr/local/opt/openssl/lib -L/usr/local/lib -o test src/*.c -lcrypto
 	./test
 	
