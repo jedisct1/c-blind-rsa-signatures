@@ -82,8 +82,8 @@ RSA_BLIND_SIGNATURE_init(RSA_BLIND_SIGNATURE *blind_sig, size_t blind_sig_len)
 }
 
 static int
-_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *blind_secret,
-       RSA *rsa, BN_CTX *bn_ctx, const uint8_t *padded, size_t padded_len)
+_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret_, RSA *rsa,
+       BN_CTX *bn_ctx, const uint8_t *padded, size_t padded_len)
 {
     BIGNUM *m = BN_CTX_get(bn_ctx);
     if (BN_bin2bn(padded, padded_len, m) == NULL) {
@@ -131,7 +131,7 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *blind_secret,
     if (RSA_BLIND_MESSAGE_init(blind_message, modulus_bytes) != 1) {
         return 0;
     }
-    if (RSA_BLIND_SECRET_init(blind_secret, modulus_bytes) != 1) {
+    if (RSA_BLIND_SECRET_init(secret_, modulus_bytes) != 1) {
         return 0;
     }
     if (BN_bn2bin_padded(blind_message->blind_message,
@@ -139,8 +139,8 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *blind_secret,
                          blind_m) != 1) {
         return 0;
     }
-    if (BN_bn2bin_padded(blind_secret->secret, (int) blind_secret->secret_len,
-                         secret) != 1) {
+    if (BN_bn2bin_padded(secret_->secret, (int) secret_->secret_len, secret) !=
+        1) {
         return 0;
     }
     return 1;
@@ -238,9 +238,8 @@ RSA_blind_sign(RSA_BLIND_SIGNATURE *blind_sig, RSA *rsa,
 }
 
 static int
-_verify(const RSA_BLIND_SIGNATURE *blind_sig,
-        const RSA_BLIND_SECRET *blind_secret, RSA *rsa, BN_CTX *bn_ctx,
-        const uint8_t msg_hash[HASH_DIGEST_LENGTH])
+_verify(const RSA_BLIND_SIGNATURE *blind_sig, const RSA_BLIND_SECRET *secret_,
+        RSA *rsa, BN_CTX *bn_ctx, const uint8_t msg_hash[HASH_DIGEST_LENGTH])
 {
     BIGNUM *secret  = BN_CTX_get(bn_ctx);
     BIGNUM *blind_z = BN_CTX_get(bn_ctx);
@@ -248,8 +247,7 @@ _verify(const RSA_BLIND_SIGNATURE *blind_sig,
     if (secret == NULL || blind_z == NULL || z == NULL) {
         return 0;
     }
-    if (BN_bin2bn(blind_secret->secret, blind_secret->secret_len, secret) ==
-        NULL) {
+    if (BN_bin2bn(secret_->secret, secret_->secret_len, secret) == NULL) {
         return 0;
     }
     if (BN_bin2bn(blind_sig->blind_sig, blind_sig->blind_sig_len, blind_z) ==
