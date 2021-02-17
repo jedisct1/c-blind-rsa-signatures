@@ -20,14 +20,14 @@ This implementation is compatible with OpenSSL and BoringSSL.
     assert(RSA_blind(&blind_message, &secret, rsa, msg, msg_len) == 1);
 
     // Compute a signature for a blind message.
-    // The original message and the secret should not be sent to the signer.
+    // The original message and the secret should never be sent to the signer.
 
     RSA_BLIND_SIGNATURE blind_sig;
     assert(RSA_blind_sign(&blind_sig, rsa, &blind_message) == 1);
     RSA_BLIND_MESSAGE_deinit(&blind_message);
 
     // Verify the signature using the signature, original message and secret.
-    // The blind message should not be sent to the verifier.
+    // The blind message should never be sent to the verifier.
 
     assert(RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len) == 1);
     RSA_BLIND_SECRET_deinit(&secret);
