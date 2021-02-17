@@ -4,6 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <openssl/bn.h>
+
 #include "blind_rsa.h"
 
 int
