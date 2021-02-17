@@ -29,20 +29,33 @@ RSA_BLIND_MESSAGE_deinit(RSA_BLIND_MESSAGE *blind_message)
 {
     OPENSSL_free(blind_message->blind_message);
     blind_message->blind_message = NULL;
-    OPENSSL_free(blind_message->secret);
-    blind_message->secret = NULL;
 }
 
 static int
 RSA_BLIND_MESSAGE_init(RSA_BLIND_MESSAGE *blind_message, size_t modulus_bytes)
 {
     blind_message->blind_message_len = modulus_bytes;
-    blind_message->secret_len        = modulus_bytes;
     if ((blind_message->blind_message =
-             OPENSSL_malloc(blind_message->blind_message_len)) == NULL ||
-        (blind_message->secret = OPENSSL_malloc(blind_message->secret_len)) ==
-            NULL) {
+             OPENSSL_malloc(blind_message->blind_message_len)) == NULL) {
         RSA_BLIND_MESSAGE_deinit(blind_message);
+        return 0;
+    }
+    return 1;
+}
+
+void
+RSA_BLIND_SECRET_deinit(RSA_BLIND_SECRET *secret)
+{
+    OPENSSL_free(secret->secret);
+    secret->secret = NULL;
+}
+
+static int
+RSA_BLIND_SECRET_init(RSA_BLIND_SECRET *secret, size_t modulus_bytes)
+{
+    secret->secret_len = modulus_bytes;
+    if ((secret->secret = OPENSSL_malloc(secret->secret_len)) == NULL) {
+        RSA_BLIND_SECRET_deinit(secret);
         return 0;
     }
     return 1;
@@ -68,8 +81,8 @@ RSA_BLIND_SIGNATURE_init(RSA_BLIND_SIGNATURE *blind_sig, size_t blind_sig_len)
 }
 
 static int
-_blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, BN_CTX *bn_ctx,
-       const uint8_t *padded, size_t padded_len)
+_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *blind_secret,
+       RSA *rsa, BN_CTX *bn_ctx, const uint8_t *padded, size_t padded_len)
 {
     BIGNUM *m = BN_CTX_get(bn_ctx);
     if (BN_bin2bn(padded, padded_len, m) == NULL) {
@@ -117,12 +130,15 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, BN_CTX *bn_ctx,
     if (RSA_BLIND_MESSAGE_init(blind_message, modulus_bytes) != 1) {
         return 0;
     }
+    if (RSA_BLIND_SECRET_init(blind_secret, modulus_bytes) != 1) {
+        return 0;
+    }
     if (BN_bn2bin_padded(blind_message->blind_message,
                          (int) blind_message->blind_message_len,
                          blind_m) != 1) {
         return 0;
     }
-    if (BN_bn2bin_padded(blind_message->secret, (int) blind_message->secret_len,
+    if (BN_bn2bin_padded(blind_secret->secret, (int) blind_secret->secret_len,
                          secret) != 1) {
         return 0;
     }
@@ -148,8 +164,8 @@ _rsa_parameters_check(const RSA *rsa)
 }
 
 int
-RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, const uint8_t *msg,
-          size_t msg_len)
+RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret, RSA *rsa,
+          const uint8_t *msg, size_t msg_len)
 {
     if (_rsa_parameters_check(rsa) != 1) {
         return 0;
@@ -188,7 +204,8 @@ RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, const uint8_t *msg,
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret = _blind(blind_message, rsa, bn_ctx, padded, padded_len);
+    const int ret =
+        _blind(blind_message, secret, rsa, bn_ctx, padded, padded_len);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
@@ -199,13 +216,13 @@ RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, const uint8_t *msg,
 
 int
 RSA_blind_sign(RSA_BLIND_SIGNATURE *blind_sig, RSA *rsa,
-               const uint8_t *blind_message, size_t blind_message_len)
+               const RSA_BLIND_MESSAGE *blind_message)
 {
     if (_rsa_parameters_check(rsa) != 1) {
         return 0;
     }
     const size_t modulus_bytes = RSA_size(rsa);
-    if (blind_message_len != modulus_bytes) {
+    if (blind_message->blind_message_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS,
                       __FILE__, __LINE__);
         return 0;
@@ -214,13 +231,14 @@ RSA_blind_sign(RSA_BLIND_SIGNATURE *blind_sig, RSA *rsa,
     if (RSA_BLIND_SIGNATURE_init(blind_sig, RSA_size(rsa)) != 1) {
         return 0;
     }
-    return RSA_private_encrypt(blind_sig->blind_sig_len, blind_message,
+    return RSA_private_encrypt(blind_sig->blind_sig_len,
+                               blind_message->blind_message,
                                blind_sig->blind_sig, rsa, RSA_NO_PADDING) != -1;
 }
 
 static int
-_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret_s,
-        size_t secret_s_len, RSA *rsa, BN_CTX *bn_ctx,
+_verify(const RSA_BLIND_SIGNATURE *blind_sig,
+        const RSA_BLIND_SECRET *blind_secret, RSA *rsa, BN_CTX *bn_ctx,
         const uint8_t msg_hash[HASH_DIGEST_LENGTH])
 {
     BIGNUM *secret  = BN_CTX_get(bn_ctx);
@@ -229,7 +247,8 @@ _verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret_s,
     if (secret == NULL || blind_z == NULL || z == NULL) {
         return 0;
     }
-    if (BN_bin2bn(secret_s, secret_s_len, secret) == NULL) {
+    if (BN_bin2bn(blind_secret->secret, blind_secret->secret_len, secret) ==
+        NULL) {
         return 0;
     }
     if (BN_bin2bn(blind_sig->blind_sig, blind_sig->blind_sig_len, blind_z) ==
@@ -267,8 +286,8 @@ _verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret_s,
 }
 
 int
-RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret,
-                 const size_t secret_len, RSA *rsa, const uint8_t *msg,
+RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig,
+                 const RSA_BLIND_SECRET *secret, RSA *rsa, const uint8_t *msg,
                  size_t msg_len)
 {
     if (_rsa_parameters_check(rsa) != 1) {
@@ -276,7 +295,7 @@ RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret,
     }
     const size_t modulus_bytes = RSA_size(rsa);
     if (blind_sig->blind_sig_len != modulus_bytes ||
-        secret_len != modulus_bytes) {
+        secret->secret_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS,
                       __FILE__, __LINE__);
         return 0;
@@ -296,8 +315,7 @@ RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret,
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret =
-        _verify(blind_sig, secret, secret_len, rsa, bn_ctx, msg_hash);
+    const int ret = _verify(blind_sig, secret, rsa, bn_ctx, msg_hash);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
