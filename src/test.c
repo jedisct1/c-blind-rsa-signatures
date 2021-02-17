@@ -48,7 +48,7 @@ main(void)
     assert(RSA_blind_sign(&blind_sig, rsa, &blind_message) == 1);
     RSA_BLIND_MESSAGE_deinit(&blind_message);
 
-    // Verify the signature using the signature, original message and secret.
+    // Verify the signature using the original message and secret.
     // The blind message should not be sent to the verifier.
 
     assert(RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len) == 1);
