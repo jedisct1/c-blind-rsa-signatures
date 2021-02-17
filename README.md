@@ -30,8 +30,8 @@ This implementation is compatible with OpenSSL and BoringSSL.
     // The blind message should never be sent to the verifier.
 
     assert(RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len) == 1);
-    RSA_BLIND_SECRET_deinit(&secret);
     RSA_BLIND_SIGNATURE_deinit(&blind_sig);
+    RSA_BLIND_SECRET_deinit(&secret);
 ```
 
-For consistency with the inconsistent OpenSSL API, functions return `1` on success and `0` on error.
+The current API embraces the OpenSSL/BoringSSL style and conventions. In particular, functions return `1` on success and `0` on error.
