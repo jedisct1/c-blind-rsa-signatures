@@ -13,9 +13,9 @@ extern "C" {
 // Blind message to be signed
 typedef struct RSA_BLIND_MESSAGE {
     uint8_t *blind_message;
-    uint8_t *r_inv;
+    uint8_t *secret;
     size_t   blind_message_len;
-    size_t   r_inv_len;
+    size_t   secret_len;
 } RSA_BLIND_MESSAGE;
 
 // RSA blind signature
@@ -42,11 +42,11 @@ int RSA_blind_sign(RSA_BLIND_SIGNATURE *blind_sig, RSA *rsa,
                    const uint8_t *blind_message, size_t blind_message_len);
 
 // Verify a signature `blind_sig` for a (non-blind) message `msg` using
-// the public key `rsa` of length `msg_len` bytes as well as `r_inv` and
-// `r_inv_len` from the blind message
-int RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *r_inv,
-                     size_t r_inv_len, RSA *rsa, const uint8_t *msg,
-                     size_t msg_len);
+// the public key `rsa` of length `msg_len` bytes as well as `secret` and
+// `secret_len` originally computed by the message author
+int RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig,
+                     const uint8_t *secret, size_t secret_len, RSA *rsa,
+                     const uint8_t *msg, size_t msg_len);
 
 #ifdef __cplusplus
 }

@@ -45,8 +45,8 @@ main(void)
 
     // Verify the signature
 
-    assert(RSA_blind_verify(&blind_sig, blind_message.r_inv,
-                            blind_message.r_inv_len, rsa, msg, msg_len) == 1);
+    assert(RSA_blind_verify(&blind_sig, blind_message.secret,
+                            blind_message.secret_len, rsa, msg, msg_len) == 1);
 
     RSA_BLIND_MESSAGE_deinit(&blind_message);
     RSA_BLIND_SIGNATURE_deinit(&blind_sig);

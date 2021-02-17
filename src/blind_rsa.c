@@ -29,18 +29,18 @@ RSA_BLIND_MESSAGE_deinit(RSA_BLIND_MESSAGE *blind_message)
 {
     OPENSSL_free(blind_message->blind_message);
     blind_message->blind_message = NULL;
-    OPENSSL_free(blind_message->r_inv);
-    blind_message->r_inv = NULL;
+    OPENSSL_free(blind_message->secret);
+    blind_message->secret = NULL;
 }
 
 static int
 RSA_BLIND_MESSAGE_init(RSA_BLIND_MESSAGE *blind_message, size_t modulus_bytes)
 {
     blind_message->blind_message_len = modulus_bytes;
-    blind_message->r_inv_len         = modulus_bytes;
+    blind_message->secret_len        = modulus_bytes;
     if ((blind_message->blind_message =
              OPENSSL_malloc(blind_message->blind_message_len)) == NULL ||
-        (blind_message->r_inv = OPENSSL_malloc(blind_message->r_inv_len)) ==
+        (blind_message->secret = OPENSSL_malloc(blind_message->secret_len)) ==
             NULL) {
         RSA_BLIND_MESSAGE_deinit(blind_message);
         return 0;
@@ -78,9 +78,9 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, BN_CTX *bn_ctx,
 
     // Compute a blind factor and its inverse
 
-    BIGNUM *r     = BN_CTX_get(bn_ctx);
-    BIGNUM *r_inv = BN_CTX_get(bn_ctx);
-    if (r == NULL || r_inv == NULL) {
+    BIGNUM *r      = BN_CTX_get(bn_ctx);
+    BIGNUM *secret = BN_CTX_get(bn_ctx);
+    if (r == NULL || secret == NULL) {
         return 0;
     }
     for (;;) {
@@ -91,7 +91,7 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, BN_CTX *bn_ctx,
             BN_cmp(r, RSA_get0_q(rsa)) == 0) {
             continue;
         }
-        if (BN_mod_inverse(r_inv, r, RSA_get0_n(rsa), bn_ctx) == NULL) {
+        if (BN_mod_inverse(secret, r, RSA_get0_n(rsa), bn_ctx) == NULL) {
             continue;
         }
         break;
@@ -122,8 +122,8 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA *rsa, BN_CTX *bn_ctx,
                          blind_m) != 1) {
         return 0;
     }
-    if (BN_bn2bin_padded(blind_message->r_inv, (int) blind_message->r_inv_len,
-                         r_inv) != 1) {
+    if (BN_bn2bin_padded(blind_message->secret, (int) blind_message->secret_len,
+                         secret) != 1) {
         return 0;
     }
     return 1;
@@ -219,17 +219,17 @@ RSA_blind_sign(RSA_BLIND_SIGNATURE *blind_sig, RSA *rsa,
 }
 
 static int
-_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *r_inv_s,
-        size_t r_inv_s_len, RSA *rsa, BN_CTX *bn_ctx,
+_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret_s,
+        size_t secret_s_len, RSA *rsa, BN_CTX *bn_ctx,
         const uint8_t msg_hash[HASH_DIGEST_LENGTH])
 {
-    BIGNUM *r_inv   = BN_CTX_get(bn_ctx);
+    BIGNUM *secret  = BN_CTX_get(bn_ctx);
     BIGNUM *blind_z = BN_CTX_get(bn_ctx);
     BIGNUM *z       = BN_CTX_get(bn_ctx);
-    if (r_inv == NULL || blind_z == NULL || z == NULL) {
+    if (secret == NULL || blind_z == NULL || z == NULL) {
         return 0;
     }
-    if (BN_bin2bn(r_inv_s, r_inv_s_len, r_inv) == NULL) {
+    if (BN_bin2bn(secret_s, secret_s_len, secret) == NULL) {
         return 0;
     }
     if (BN_bin2bn(blind_sig->blind_sig, blind_sig->blind_sig_len, blind_z) ==
@@ -237,7 +237,7 @@ _verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *r_inv_s,
         return 0;
     }
 
-    if (BN_mod_mul(z, blind_z, r_inv, RSA_get0_n(rsa), bn_ctx) != 1) {
+    if (BN_mod_mul(z, blind_z, secret, RSA_get0_n(rsa), bn_ctx) != 1) {
         return 0;
     }
 
@@ -267,8 +267,8 @@ _verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *r_inv_s,
 }
 
 int
-RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *r_inv,
-                 const size_t r_inv_len, RSA *rsa, const uint8_t *msg,
+RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *secret,
+                 const size_t secret_len, RSA *rsa, const uint8_t *msg,
                  size_t msg_len)
 {
     if (_rsa_parameters_check(rsa) != 1) {
@@ -276,7 +276,7 @@ RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *r_inv,
     }
     const size_t modulus_bytes = RSA_size(rsa);
     if (blind_sig->blind_sig_len != modulus_bytes ||
-        r_inv_len != modulus_bytes) {
+        secret_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS,
                       __FILE__, __LINE__);
         return 0;
@@ -296,7 +296,8 @@ RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const uint8_t *r_inv,
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret = _verify(blind_sig, r_inv, r_inv_len, rsa, bn_ctx, msg_hash);
+    const int ret =
+        _verify(blind_sig, secret, secret_len, rsa, bn_ctx, msg_hash);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
