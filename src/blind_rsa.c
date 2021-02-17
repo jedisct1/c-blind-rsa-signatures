@@ -186,6 +186,7 @@ RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret, RSA *rsa,
         HASH_Final(msg_hash, &hash_ctx) != 1) {
         return 0;
     }
+    OPENSSL_cleanse(&hash_ctx, sizeof hash_ctx);
 
     // PSS-MGF1 padding
 
