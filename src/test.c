@@ -29,25 +29,28 @@ main(void)
     }
     BN_free(e);
 
-    // Blind a message
-
     const uint8_t msg[]   = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     const size_t  msg_len = sizeof msg;
 
-    RSA_BLIND_MESSAGE blind_message;
-    RSA_BLIND_SECRET  blind_secret;
-    assert(RSA_blind(&blind_message, &blind_secret, rsa, msg, msg_len) == 1);
+    // Blind a message - Returns the blinded message as well as a secret,
+    // that will later be required for signature verification.
 
-    // Compute a signature for a blind message
+    RSA_BLIND_MESSAGE blind_message;
+    RSA_BLIND_SECRET  secret;
+    assert(RSA_blind(&blind_message, &secret, rsa, msg, msg_len) == 1);
+
+    // Compute a signature for a blind message.
+    // The original message and the secret should not be sent to the signer.
 
     RSA_BLIND_SIGNATURE blind_sig;
     assert(RSA_blind_sign(&blind_sig, rsa, &blind_message) == 1);
     RSA_BLIND_MESSAGE_deinit(&blind_message);
 
-    // Verify the signature
+    // Verify the signature using the signature, original message and secret.
+    // The blind message should not be sent to the verifier.
 
-    assert(RSA_blind_verify(&blind_sig, &blind_secret, rsa, msg, msg_len) == 1);
-    RSA_BLIND_SECRET_deinit(&blind_secret);
+    assert(RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len) == 1);
+    RSA_BLIND_SECRET_deinit(&secret);
     RSA_BLIND_SIGNATURE_deinit(&blind_sig);
 
     RSA_free(rsa);
