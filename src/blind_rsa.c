@@ -200,6 +200,7 @@ RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret, RSA *rsa,
                                        -1) != 1) {
         return 0;
     }
+    OPENSSL_cleanse(msg_hash, HASH_DIGEST_LENGTH);
 
     // Blind the padded message
 
@@ -214,7 +215,7 @@ RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret, RSA *rsa,
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
-    OPENSSL_free(padded);
+    OPENSSL_clear_free(padded, padded_len);
 
     return ret;
 }
