@@ -11,7 +11,8 @@
 #include "blind_rsa.h"
 
 #ifndef OPENSSL_IS_BORINGSSL
-#define BN_bn2bin_padded(OUT, LEN, IN) BN_bn2binpad((IN), (OUT), (LEN)) == (LEN)
+#define BN_bn2bin_padded(OUT, LEN, IN) \
+    (BN_bn2binpad((IN), (OUT), (LEN)) == (LEN))
 #endif
 
 #define MIN_MODULUS_BITS 2048
