@@ -12,7 +12,7 @@ This implementation is compatible with OpenSSL and BoringSSL.
     const uint8_t msg[]   = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     const size_t  msg_len = sizeof msg;
 
-    // Blind a message - Returns the blinded message as well as a secret,
+    // Blind a message - Returns the blinded message as well as a secret
     // that will later be required for signature verification.
 
     RSA_BLIND_MESSAGE blind_message;
