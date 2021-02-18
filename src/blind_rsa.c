@@ -94,19 +94,12 @@ _blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret_, RSA *rsa, BN
     if (secret_inv == NULL || secret == NULL) {
         return 0;
     }
-    for (;;) {
+    do {
         if (BN_rand_range(secret_inv, RSA_get0_n(rsa)) != 1) {
             return 0;
         }
-        if (BN_is_zero(secret_inv) || BN_is_one(secret_inv) ||
-            BN_cmp(secret_inv, RSA_get0_p(rsa)) == 0 || BN_cmp(secret_inv, RSA_get0_q(rsa)) == 0) {
-            continue;
-        }
-        if (BN_mod_inverse(secret, secret_inv, RSA_get0_n(rsa), bn_ctx) == NULL) {
-            continue;
-        }
-        break;
-    }
+    } while (BN_is_one(secret_inv) ||
+             BN_mod_inverse(secret, secret_inv, RSA_get0_n(rsa), bn_ctx) == NULL);
 
     // Blind the message
 
