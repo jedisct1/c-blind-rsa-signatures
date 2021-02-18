@@ -13,8 +13,7 @@
 int
 main(void)
 {
-    if (OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS |
-                                OPENSSL_INIT_ADD_ALL_DIGESTS,
+    if (OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ADD_ALL_DIGESTS,
                             NULL) != 1) {
         return 1;
     }

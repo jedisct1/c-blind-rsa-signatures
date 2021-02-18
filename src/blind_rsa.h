@@ -40,8 +40,8 @@ void RSA_BLIND_SIGNATURE_deinit(RSA_BLIND_SIGNATURE *blind_sig);
 // Blind a message `msg` of length `msg_len` bytes, using the public RSA key
 // `rsa`, and serialize the blind message into `blind_message`, as well as
 // the secret blinding factor into `secret`
-int RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret,
-              RSA *rsa, const uint8_t *msg, size_t msg_len);
+int RSA_blind(RSA_BLIND_MESSAGE *blind_message, RSA_BLIND_SECRET *secret, RSA *rsa,
+              const uint8_t *msg, size_t msg_len);
 
 // Compute a signature for a blind message `blind_message` of
 // length `blind_message_len` bytes using a key pair `rsa`, and put the
@@ -52,9 +52,8 @@ int RSA_blind_sign(RSA_BLIND_SIGNATURE *blind_sig, RSA *rsa,
 // Verify a signature `blind_sig` for a (non-blind) message `msg` using
 // the public key `rsa` of length `msg_len` bytes as well as `secret`
 // originally computed by the message author using `RSA_blind()`
-int RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig,
-                     const RSA_BLIND_SECRET *secret_, RSA *rsa,
-                     const uint8_t *msg, size_t msg_len);
+int RSA_blind_verify(const RSA_BLIND_SIGNATURE *blind_sig, const RSA_BLIND_SECRET *secret_,
+                     RSA *rsa, const uint8_t *msg, size_t msg_len);
 
 #ifdef __cplusplus
 }
