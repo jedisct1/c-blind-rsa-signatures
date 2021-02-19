@@ -120,6 +120,7 @@ static const char *TV_salt =
 #include <string.h>
 
 #include <openssl/bn.h>
+#include <openssl/err.h>
 
 #include "blind_rsa.h"
 
@@ -127,6 +128,11 @@ int
 main(void)
 {
     int r;
+
+    if (OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ADD_ALL_DIGESTS,
+                            NULL) != ERR_LIB_NONE) {
+        return 1;
+    }
 
     // An RSA object with the private exponent `d` set.  This is the private and public key pair.
     RSA *rsa_priv = RSA_new();
@@ -144,7 +150,7 @@ main(void)
         assert(r == strlen(TV_d));
 
         r = RSA_set0_key(rsa_priv, n, e, d);
-        assert(r == 1);
+        assert(r == ERR_LIB_NONE);
     }
     BRSASecretKey sk = { .rsa = rsa_priv };
 
@@ -161,7 +167,7 @@ main(void)
         assert(r == strlen(TV_e));
 
         r = RSA_set0_key(rsa_pub, n, e, NULL);
-        assert(r == 1);
+        assert(r == ERR_LIB_NONE);
     }
     BRSAPublicKey pk = { .rsa = rsa_pub };
 
@@ -182,18 +188,18 @@ main(void)
         BRSABlindMessage   blind_message;
         BRSABlindingSecret secret;
         r = brsa_blind(&blind_message, &secret, &pk, msg, msg_len);
-        assert(r == 1);
+        assert(r == 0);
 
         // Compute a signature for the blind message.
         BRSABlindSignature blind_sig;
         r = brsa_blind_sign(&blind_sig, &sk, &blind_message);
-        assert(r == 1);
+        assert(r == 0);
 
         BRSASignature sig;
 
         // Verify the signature using the original message and secret.
         r = brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len);
-        assert(r == 1);
+        assert(r == 0);
 
         brsa_signature_deinit(&sig);
         brsa_blind_signature(&blind_sig);
@@ -220,10 +226,10 @@ main(void)
 
         BRSASignature sig;
         r = brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len);
-        assert(r == 1);
+        assert(r == 0);
 
         r = brsa_verify(&sig, &pk, msg, msg_len);
-        assert(r == 1);
+        assert(r == 0);
 
         brsa_signature_deinit(&sig);
         OPENSSL_free(secret.secret);
