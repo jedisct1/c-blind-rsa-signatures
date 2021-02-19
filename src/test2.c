@@ -195,7 +195,7 @@ main(void)
         BLINDRSA_SIGNATURE sig;
 
         // Verify the signature using the original message and secret.
-        r = BLINDRSA_blind_verify(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
+        r = BLINDRSA_finalize(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
         BLINDRSA_SIGNATURE_deinit(&sig);
@@ -222,7 +222,7 @@ main(void)
         secret.secret_len = len;
 
         BLINDRSA_SIGNATURE sig;
-        r = BLINDRSA_blind_verify(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
+        r = BLINDRSA_finalize(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
         r = BLINDRSA_verify(&sig, rsa_pub, msg, msg_len);
