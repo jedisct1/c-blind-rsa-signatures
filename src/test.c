@@ -27,14 +27,12 @@ main(void)
 
     // Blind a message - Returns the blinded message as well as a secret,
     // that will later be required for signature verification.
-
     BRSABlindMessage   blind_message;
     BRSABlindingSecret secret;
     assert(brsa_blind(&blind_message, &secret, &pk, msg, msg_len) == 1);
 
     // Compute a signature for a blind message.
     // The original message and the secret should not be sent to the signer.
-
     BRSABlindSignature blind_sig;
     assert(brsa_blind_sign(&blind_sig, &sk, &blind_message) == 1);
     brsa_blind_message_deinit(&blind_message);
