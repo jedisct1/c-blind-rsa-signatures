@@ -13,9 +13,9 @@ This implementation is compatible with OpenSSL and BoringSSL.
     const size_t  msg_len = sizeof msg;
 
     // Generate a new RSA-2048 key pair
-    BRSAKeyPair   kp;
+    BRSASecretKey sk;
     BRSAPublicKey pk;
-    assert(brsa_keypair_generate(&kp, &pk, 2048) == 1);
+    assert(brsa_keypair_generate(&sk, &pk, 2048) == 1);
 
     // Blind a message - Returns the blinded message as well as a secret,
     // that will later be required for signature verification.
@@ -28,7 +28,7 @@ This implementation is compatible with OpenSSL and BoringSSL.
     // The original message and the secret should not be sent to the signer.
 
     BRSABlindSignature blind_sig;
-    assert(brsa_blind_sign(&blind_sig, &kp, &blind_message) == 1);
+    assert(brsa_blind_sign(&blind_sig, &sk, &blind_message) == 1);
     brsa_blind_message_deinit(&blind_message);
 
     // Verify the blind signature using the original message and secret.
@@ -36,10 +36,10 @@ This implementation is compatible with OpenSSL and BoringSSL.
     BRSASignature sig;
 
     // A different message with the same signature should return an error.
-    assert(brsa_finalize(&sig, &blind_sig, &secret, &kp, msg, msg_len - 1) == 0);
+    assert(brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len - 1) == 0);
 
     // The correct message must pass verification.
-    assert(brsa_finalize(&sig, &blind_sig, &secret, &kp, msg, msg_len) == 1);
+    assert(brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len) == 1);
 
     brsa_blind_signature(&blind_sig);
     brsa_blind_secret_deinit(&secret);
@@ -49,17 +49,17 @@ This implementation is compatible with OpenSSL and BoringSSL.
     brsa_signature_deinit(&sig);
 
     // Serialization/deserialization
-    BRSASerializedKey kp_der;
-    assert(brsa_keypair_export(&kp_der, &kp) == 1);
-    assert(brsa_keypair_import(&kp, kp_der.bytes, kp_der.bytes_len) == 1);
-    brsa_serializedkey_deinit(&kp_der);
+    BRSASerializedKey sk_der;
+    assert(brsa_secretkey_export(&sk_der, &sk) == 1);
+    assert(brsa_secretkey_import(&sk, sk_der.bytes, sk_der.bytes_len) == 1);
+    brsa_serializedkey_deinit(&sk_der);
 
     BRSASerializedKey pk_der;
     assert(brsa_publickey_export(&pk_der, &pk) == 1);
     assert(brsa_publickey_import(&pk, pk_der.bytes, pk_der.bytes_len) == 1);
     brsa_serializedkey_deinit(&pk_der);
 
-    brsa_keypair_deinit(&kp);
+    brsa_secretkey_deinit(&sk);
     brsa_publickey_deinit(&pk);
 ```
 

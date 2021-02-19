@@ -39,10 +39,10 @@ typedef struct BRSAPublicKey {
     RSA *rsa;
 } BRSAPublicKey;
 
-// An RSA key pair
-typedef struct BRSAKeyPair {
+// An RSA secret key
+typedef struct BRSASecretKey {
     RSA *rsa;
-} BRSAKeyPair;
+} BRSASecretKey;
 
 // A serialized representation of a key
 typedef struct BRSASerializedKey {
@@ -50,15 +50,15 @@ typedef struct BRSASerializedKey {
     size_t   bytes_len;
 } BRSASerializedKey;
 
-// Generate a new key pair, and put the key pair into `kp` and a key with the public information
+// Generate a new key pair, and put the key pair into `sk` and a key with the public information
 // only into `pk`
-int brsa_keypair_generate(BRSAKeyPair *kp, BRSAPublicKey *pk, int modulus_bits);
+int brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits);
 
-// Import a DER-serialized key pair into `kp`
-int brsa_keypair_import(BRSAKeyPair *kp, const uint8_t *der, const size_t der_len);
+// Import a DER-serialized secret key into `sk`
+int brsa_secretkey_import(BRSASecretKey *sk, const uint8_t *der, const size_t der_len);
 
-// Export a key pair into a DER representation and put the result into `serialized`
-int brsa_keypair_export(BRSASerializedKey *serialized, const BRSAKeyPair *kp);
+// Export a secret key into a DER representation and put the result into `serialized`
+int brsa_secretkey_export(BRSASerializedKey *serialized, const BRSASecretKey *sk);
 
 // Import a DER-serialized public key into `pk`
 int brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_len);
@@ -66,8 +66,8 @@ int brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t de
 // Export a public key into a DER representation, and put the result into `serialized`
 int brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk);
 
-// Free the internal structures of a key pair
-void brsa_keypair_deinit(BRSAKeyPair *kp);
+// Free the internal structures of a secret key
+void brsa_secretkey_deinit(BRSASecretKey *sk);
 
 // Free the internal structures of a public key
 void brsa_publickey_deinit(BRSAPublicKey *pk);
@@ -94,17 +94,17 @@ int brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSA
                const uint8_t *msg, size_t msg_len);
 
 // Compute a signature for a blind message `blind_message` of
-// length `blind_message_len` bytes using a key pair `kp`, and put the
+// length `blind_message_len` bytes using a key pair `sk`, and put the
 // serialized signature into `blind_sig`
-int brsa_blind_sign(BRSABlindSignature *blind_sig, BRSAKeyPair *kp,
+int brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
                     const BRSABlindMessage *blind_message);
 
 // Finalize a blind signature `blind_sig` for a (non-blind) message `msg` of length
-// `msg_len` bytes, the key pair `kp` as well as `secret` originally computed by the
+// `msg_len` bytes, the secret key `sk` as well as `secret` originally computed by the
 // message author using `RSA_blind()`.
 // The non-blind signature is put into `sig`.
 int brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
-                  const BRSABlindingSecret *secret_, BRSAKeyPair *kp, const uint8_t *msg,
+                  const BRSABlindingSecret *secret_, BRSASecretKey *sk, const uint8_t *msg,
                   size_t msg_len);
 
 // Verify a non-blind signature `sig` for a message `msg` using the public key

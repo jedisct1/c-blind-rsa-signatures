@@ -151,7 +151,7 @@ main(void)
         r = RSA_set0_key(rsa_priv, n, e, d);
         assert(r == 1);
     }
-    BRSAKeyPair kp = { .rsa = rsa_priv };
+    BRSASecretKey sk = { .rsa = rsa_priv };
 
     // An RSA object without the private exponent `d`.  This is the public key.
     RSA *rsa_pub = RSA_new();
@@ -191,13 +191,13 @@ main(void)
 
         // Compute a signature for the blind message.
         BRSABlindSignature blind_sig;
-        r = brsa_blind_sign(&blind_sig, &kp, &blind_message);
+        r = brsa_blind_sign(&blind_sig, &sk, &blind_message);
         assert(r == 1);
 
         BRSASignature sig;
 
         // Verify the signature using the original message and secret.
-        r = brsa_finalize(&sig, &blind_sig, &secret, &kp, msg, msg_len);
+        r = brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len);
         assert(r == 1);
 
         brsa_signature_deinit(&sig);
@@ -224,7 +224,7 @@ main(void)
         secret.secret_len = len;
 
         BRSASignature sig;
-        r = brsa_finalize(&sig, &blind_sig, &secret, &kp, msg, msg_len);
+        r = brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len);
         assert(r == 1);
 
         r = brsa_verify(&sig, &pk, msg, msg_len);
@@ -236,7 +236,7 @@ main(void)
     }
 
     OPENSSL_free(msg);
-    brsa_keypair_deinit(&kp);
+    brsa_secretkey_deinit(&sk);
     brsa_publickey_deinit(&pk);
 
     return 0;
