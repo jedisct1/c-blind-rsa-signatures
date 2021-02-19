@@ -52,3 +52,7 @@ Mkfile.old
 dkms.conf
 
 *~
+
+# Project-specific executables
+test
+test2
