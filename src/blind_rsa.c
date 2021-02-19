@@ -1,3 +1,4 @@
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -24,73 +25,190 @@
 #define HASH_Update SHA384_Update
 #define HASH_Final SHA384_Final
 
+int
+brsa_keypair_generate(BRSAKeyPair *kp, BRSAPublicKey *pk, int modulus_bits)
+{
+    kp->rsa = RSA_new();
+    if (kp->rsa == NULL) {
+        return 0;
+    }
+
+    BIGNUM *e = BN_new();
+    if (e == NULL) {
+        return 0;
+    }
+    BN_set_word(e, RSA_F4);
+    if (RSA_generate_key_ex(kp->rsa, modulus_bits, e, NULL) != 1) {
+        BN_free(e);
+        return 0;
+    }
+    BN_free(e);
+
+    if (pk != NULL) {
+        pk->rsa = RSAPublicKey_dup(kp->rsa);
+        if (pk->rsa == NULL) {
+            return 0;
+        }
+    }
+    return 1;
+}
+
+int
+brsa_keypair_import(BRSAKeyPair *kp, const uint8_t *der, const size_t der_len)
+{
+    EVP_PKEY *     evp_pkey = NULL;
+    const uint8_t *der_     = der;
+
+    if (der_len > LONG_MAX) {
+        return 0;
+    }
+    if (d2i_PrivateKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
+        return 0;
+    }
+    kp->rsa = EVP_PKEY_get0_RSA(evp_pkey);
+
+    return 1;
+}
+
+int
+brsa_keypair_export(BRSASerializedKey *serialized, const BRSAKeyPair *kp)
+{
+    EVP_PKEY *evp_pkey = EVP_PKEY_new();
+    EVP_PKEY_set1_RSA(evp_pkey, kp->rsa);
+    serialized->bytes = NULL;
+
+    const int ret = i2d_PrivateKey(evp_pkey, &serialized->bytes);
+    EVP_PKEY_free(evp_pkey);
+    if (ret <= 0) {
+        return 0;
+    }
+    serialized->bytes_len = (size_t) ret;
+
+    return 1;
+}
+
+int
+brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_len)
+{
+    EVP_PKEY *     evp_pkey = NULL;
+    const uint8_t *der_     = der;
+
+    if (der_len > LONG_MAX) {
+        return 0;
+    }
+    if (d2i_PublicKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
+        return 0;
+    }
+    pk->rsa = EVP_PKEY_get0_RSA(evp_pkey);
+
+    return 1;
+}
+
+int
+brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk)
+{
+    EVP_PKEY *evp_pkey = EVP_PKEY_new();
+    EVP_PKEY_set1_RSA(evp_pkey, pk->rsa);
+    serialized->bytes = NULL;
+
+    const int ret = i2d_PublicKey(evp_pkey, &serialized->bytes);
+    EVP_PKEY_free(evp_pkey);
+    if (ret <= 0) {
+        return 0;
+    }
+    serialized->bytes_len = (size_t) ret;
+
+    return 1;
+}
+
 void
-BLINDRSA_BLIND_MESSAGE_deinit(BLINDRSA_BLIND_MESSAGE *blind_message)
+brsa_keypair_deinit(BRSAKeyPair *kp)
+{
+    RSA_free(kp->rsa);
+    kp->rsa = NULL;
+}
+
+void
+brsa_publickey_deinit(BRSAPublicKey *pk)
+{
+    RSA_free(pk->rsa);
+    pk->rsa = NULL;
+}
+
+void
+brsa_serializedkey_deinit(BRSASerializedKey *serialized)
+{
+    OPENSSL_clear_free(serialized->bytes, serialized->bytes_len);
+    serialized->bytes = NULL;
+}
+
+void
+brsa_blind_message_deinit(BRSABlindMessage *blind_message)
 {
     OPENSSL_clear_free(blind_message->blind_message, blind_message->blind_message_len);
     blind_message->blind_message = NULL;
 }
 
 static int
-BLINDRSA_BLIND_MESSAGE_init(BLINDRSA_BLIND_MESSAGE *blind_message, size_t modulus_bytes)
+brsa_blind_message_init(BRSABlindMessage *blind_message, size_t modulus_bytes)
 {
     blind_message->blind_message_len = modulus_bytes;
     if ((blind_message->blind_message = OPENSSL_malloc(blind_message->blind_message_len)) == NULL) {
-        BLINDRSA_BLIND_MESSAGE_deinit(blind_message);
+        brsa_blind_message_deinit(blind_message);
         return 0;
     }
     return 1;
 }
 
 void
-BLINDRSA_BLIND_SECRET_deinit(BLINDRSA_BLIND_SECRET *secret)
+brsa_blind_secret_deinit(BRSABlindingSecret *secret)
 {
     OPENSSL_clear_free(secret->secret, secret->secret_len);
     secret->secret = NULL;
 }
 
 static int
-BLINDRSA_BLIND_SECRET_init(BLINDRSA_BLIND_SECRET *secret, size_t modulus_bytes)
+brsa_blind_secret_init(BRSABlindingSecret *secret, size_t modulus_bytes)
 {
     secret->secret_len = modulus_bytes;
     if ((secret->secret = OPENSSL_malloc(secret->secret_len)) == NULL) {
-        BLINDRSA_BLIND_SECRET_deinit(secret);
+        brsa_blind_secret_deinit(secret);
         return 0;
     }
     return 1;
 }
 
 void
-BLINDRSA_BLIND_SIGNATURE_deinit(BLINDRSA_BLIND_SIGNATURE *blind_sig)
+brsa_blind_signature(BRSABlindSignature *blind_sig)
 {
     OPENSSL_free(blind_sig->blind_sig);
     blind_sig->blind_sig = NULL;
 }
 
 static int
-BLINDRSA_BLIND_SIGNATURE_init(BLINDRSA_BLIND_SIGNATURE *blind_sig, size_t blind_sig_len)
+brsa_blind_signature_init(BRSABlindSignature *blind_sig, size_t blind_sig_len)
 {
     blind_sig->blind_sig_len = blind_sig_len;
     if ((blind_sig->blind_sig = OPENSSL_malloc(blind_sig->blind_sig_len)) == NULL) {
-        BLINDRSA_BLIND_SIGNATURE_deinit(blind_sig);
+        brsa_blind_signature(blind_sig);
         return 0;
     }
     return 1;
 }
 
 void
-BLINDRSA_SIGNATURE_deinit(BLINDRSA_SIGNATURE *sig)
+brsa_signature_deinit(BRSASignature *sig)
 {
     OPENSSL_free(sig->sig);
     sig->sig = NULL;
 }
 
 static int
-BLINDRSA_SIGNATURE_init(BLINDRSA_SIGNATURE *sig, size_t sig_len)
+brsa_signature_init(BRSASignature *sig, size_t sig_len)
 {
     sig->sig_len = sig_len;
     if ((sig->sig = OPENSSL_malloc(sig->sig_len)) == NULL) {
-        BLINDRSA_SIGNATURE_deinit(sig);
+        brsa_signature_deinit(sig);
         return 0;
     }
     return 1;
@@ -109,7 +227,7 @@ _hash(uint8_t msg_hash[HASH_DIGEST_LENGTH], const uint8_t *msg, const size_t msg
 }
 
 static int
-_blind(BLINDRSA_BLIND_MESSAGE *blind_message, BLINDRSA_BLIND_SECRET *secret_, RSA *pk,
+_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicKey *pk,
        BN_CTX *bn_ctx, const uint8_t *padded, size_t padded_len)
 {
     BIGNUM *m = BN_CTX_get(bn_ctx);
@@ -125,11 +243,11 @@ _blind(BLINDRSA_BLIND_MESSAGE *blind_message, BLINDRSA_BLIND_SECRET *secret_, RS
         return 0;
     }
     do {
-        if (BN_rand_range(secret_inv, RSA_get0_n(pk)) != 1) {
+        if (BN_rand_range(secret_inv, RSA_get0_n(pk->rsa)) != 1) {
             return 0;
         }
     } while (BN_is_one(secret_inv) ||
-             BN_mod_inverse(secret, secret_inv, RSA_get0_n(pk), bn_ctx) == NULL);
+             BN_mod_inverse(secret, secret_inv, RSA_get0_n(pk->rsa), bn_ctx) == NULL);
 
     // Blind the message
 
@@ -138,21 +256,21 @@ _blind(BLINDRSA_BLIND_MESSAGE *blind_message, BLINDRSA_BLIND_SECRET *secret_, RS
     if (x == NULL || blind_m == NULL) {
         return 0;
     }
-    if (BN_mod_exp(x, secret_inv, RSA_get0_e(pk), RSA_get0_n(pk), bn_ctx) != 1) {
+    if (BN_mod_exp(x, secret_inv, RSA_get0_e(pk->rsa), RSA_get0_n(pk->rsa), bn_ctx) != 1) {
         return 0;
     }
     BN_clear(secret_inv);
-    if (BN_mod_mul(blind_m, m, x, RSA_get0_n(pk), bn_ctx) != 1) {
+    if (BN_mod_mul(blind_m, m, x, RSA_get0_n(pk->rsa), bn_ctx) != 1) {
         return 0;
     }
 
     // Serialize the blind message
 
-    const size_t modulus_bytes = RSA_size(pk);
-    if (BLINDRSA_BLIND_MESSAGE_init(blind_message, modulus_bytes) != 1) {
+    const size_t modulus_bytes = RSA_size(pk->rsa);
+    if (brsa_blind_message_init(blind_message, modulus_bytes) != 1) {
         return 0;
     }
-    if (BLINDRSA_BLIND_SECRET_init(secret_, modulus_bytes) != 1) {
+    if (brsa_blind_secret_init(secret_, modulus_bytes) != 1) {
         return 0;
     }
     if (BN_bn2bin_padded(blind_message->blind_message, (int) blind_message->blind_message_len,
@@ -166,9 +284,9 @@ _blind(BLINDRSA_BLIND_MESSAGE *blind_message, BLINDRSA_BLIND_SECRET *secret_, RS
 }
 
 static int
-_rsa_parameters_check(const RSA *pk)
+_rsa_parameters_check(const RSA *rsa)
 {
-    const unsigned int modulus_bits = RSA_bits(pk);
+    const unsigned int modulus_bits = RSA_bits(rsa);
 
     if (modulus_bits < MIN_MODULUS_BITS) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DIGEST_TOO_BIG_FOR_RSA_KEY, __FILE__, __LINE__);
@@ -182,13 +300,13 @@ _rsa_parameters_check(const RSA *pk)
 }
 
 int
-BLINDRSA_blind(BLINDRSA_BLIND_MESSAGE *blind_message, BLINDRSA_BLIND_SECRET *secret, RSA *pk,
-               const uint8_t *msg, size_t msg_len)
+brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPublicKey *pk,
+           const uint8_t *msg, size_t msg_len)
 {
-    if (_rsa_parameters_check(pk) != 1) {
+    if (_rsa_parameters_check(pk->rsa) != 1) {
         return 0;
     }
-    const size_t modulus_bytes = RSA_size(pk);
+    const size_t modulus_bytes = RSA_size(pk->rsa);
 
     // Compute H(msg)
 
@@ -206,7 +324,7 @@ BLINDRSA_blind(BLINDRSA_BLIND_MESSAGE *blind_message, BLINDRSA_BLIND_SECRET *sec
     }
 
     const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_padding_add_PKCS1_PSS_mgf1(pk, padded, msg_hash, evp_md, evp_md, -1) != 1) {
+    if (RSA_padding_add_PKCS1_PSS_mgf1(pk->rsa, padded, msg_hash, evp_md, evp_md, -1) != 1) {
         return 0;
     }
     OPENSSL_cleanse(msg_hash, HASH_DIGEST_LENGTH);
@@ -229,28 +347,28 @@ BLINDRSA_blind(BLINDRSA_BLIND_MESSAGE *blind_message, BLINDRSA_BLIND_SECRET *sec
 }
 
 int
-BLINDRSA_blind_sign(BLINDRSA_BLIND_SIGNATURE *blind_sig, RSA *kp,
-                    const BLINDRSA_BLIND_MESSAGE *blind_message)
+brsa_blind_sign(BRSABlindSignature *blind_sig, BRSAKeyPair *kp,
+                const BRSABlindMessage *blind_message)
 {
-    if (_rsa_parameters_check(kp) != 1) {
+    if (_rsa_parameters_check(kp->rsa) != 1) {
         return 0;
     }
-    const size_t modulus_bytes = RSA_size(kp);
+    const size_t modulus_bytes = RSA_size(kp->rsa);
     if (blind_message->blind_message_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
         return 0;
     }
 
-    if (BLINDRSA_BLIND_SIGNATURE_init(blind_sig, RSA_size(kp)) != 1) {
+    if (brsa_blind_signature_init(blind_sig, RSA_size(kp->rsa)) != 1) {
         return 0;
     }
     return RSA_private_encrypt(blind_sig->blind_sig_len, blind_message->blind_message,
-                               blind_sig->blind_sig, kp, RSA_NO_PADDING) != -1;
+                               blind_sig->blind_sig, kp->rsa, RSA_NO_PADDING) != -1;
 }
 
 static int
-_finalize(BLINDRSA_SIGNATURE *sig, const BLINDRSA_BLIND_SIGNATURE *blind_sig,
-          const BLINDRSA_BLIND_SECRET *secret_, RSA *kp, BN_CTX *bn_ctx,
+_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
+          const BRSABlindingSecret *secret_, BRSAKeyPair *kp, BN_CTX *bn_ctx,
           const uint8_t msg_hash[HASH_DIGEST_LENGTH])
 {
     BIGNUM *secret  = BN_CTX_get(bn_ctx);
@@ -266,11 +384,11 @@ _finalize(BLINDRSA_SIGNATURE *sig, const BLINDRSA_BLIND_SIGNATURE *blind_sig,
         return 0;
     }
 
-    if (BN_mod_mul(z, blind_z, secret, RSA_get0_n(kp), bn_ctx) != 1) {
+    if (BN_mod_mul(z, blind_z, secret, RSA_get0_n(kp->rsa), bn_ctx) != 1) {
         return 0;
     }
 
-    const size_t zs_len = RSA_size(kp);
+    const size_t zs_len = RSA_size(kp->rsa);
     uint8_t *    zs     = OPENSSL_malloc(zs_len);
     if (zs == NULL) {
         return 0;
@@ -279,31 +397,31 @@ _finalize(BLINDRSA_SIGNATURE *sig, const BLINDRSA_BLIND_SIGNATURE *blind_sig,
         return 0;
     }
 
-    if (BLINDRSA_SIGNATURE_init(sig, zs_len) != 1) {
+    if (brsa_signature_init(sig, zs_len) != 1) {
         return 0;
     }
-    if (RSA_public_decrypt(zs_len, zs, sig->sig, kp, RSA_NO_PADDING) == -1) {
+    if (RSA_public_decrypt(zs_len, zs, sig->sig, kp->rsa, RSA_NO_PADDING) == -1) {
         OPENSSL_free(zs);
         return 0;
     }
     OPENSSL_free(zs);
 
     const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(kp, msg_hash, evp_md, evp_md, sig->sig, -1) != 1) {
-        BLINDRSA_SIGNATURE_deinit(sig);
+    if (RSA_verify_PKCS1_PSS_mgf1(kp->rsa, msg_hash, evp_md, evp_md, sig->sig, -1) != 1) {
+        brsa_signature_deinit(sig);
         return 0;
     }
     return 1;
 }
 
 int
-BLINDRSA_finalize(BLINDRSA_SIGNATURE *sig, const BLINDRSA_BLIND_SIGNATURE *blind_sig,
-                  const BLINDRSA_BLIND_SECRET *secret, RSA *kp, const uint8_t *msg, size_t msg_len)
+brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
+              const BRSABlindingSecret *secret, BRSAKeyPair *kp, const uint8_t *msg, size_t msg_len)
 {
-    if (_rsa_parameters_check(kp) != 1) {
+    if (_rsa_parameters_check(kp->rsa) != 1) {
         return 0;
     }
-    const size_t modulus_bytes = RSA_size(kp);
+    const size_t modulus_bytes = RSA_size(kp->rsa);
     if (blind_sig->blind_sig_len != modulus_bytes || secret->secret_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
         return 0;
@@ -329,9 +447,9 @@ BLINDRSA_finalize(BLINDRSA_SIGNATURE *sig, const BLINDRSA_BLIND_SIGNATURE *blind
 }
 
 int
-BLINDRSA_verify(const BLINDRSA_SIGNATURE *sig, RSA *pk, const uint8_t *msg, size_t msg_len)
+brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
 {
-    const size_t modulus_bytes = RSA_size(pk);
+    const size_t modulus_bytes = RSA_size(pk->rsa);
     if (sig->sig_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
         return 0;
@@ -343,5 +461,5 @@ BLINDRSA_verify(const BLINDRSA_SIGNATURE *sig, RSA *pk, const uint8_t *msg, size
     }
 
     const EVP_MD *evp_md = HASH_EVP();
-    return RSA_verify_PKCS1_PSS_mgf1(pk, msg_hash, evp_md, evp_md, sig->sig, -1);
+    return RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, sig->sig, -1);
 }

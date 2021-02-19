@@ -151,6 +151,7 @@ main(void)
         r = RSA_set0_key(rsa_priv, n, e, d);
         assert(r == 1);
     }
+    BRSAKeyPair kp = { .rsa = rsa_priv };
 
     // An RSA object without the private exponent `d`.  This is the public key.
     RSA *rsa_pub = RSA_new();
@@ -167,6 +168,7 @@ main(void)
         r = RSA_set0_key(rsa_pub, n, e, NULL);
         assert(r == 1);
     }
+    BRSAPublicKey pk = { .rsa = rsa_pub };
 
     uint8_t *msg;
     size_t   msg_len;
@@ -182,60 +184,60 @@ main(void)
         // Blind the message - Returns the blinded message as well as a secret
         // called `inv` in the spec, that will later be required for signature
         // verification.
-        BLINDRSA_BLIND_MESSAGE blind_message;
-        BLINDRSA_BLIND_SECRET  secret;
-        r = BLINDRSA_blind(&blind_message, &secret, rsa_pub, msg, msg_len);
+        BRSABlindMessage   blind_message;
+        BRSABlindingSecret secret;
+        r = brsa_blind(&blind_message, &secret, &pk, msg, msg_len);
         assert(r == 1);
 
         // Compute a signature for the blind message.
-        BLINDRSA_BLIND_SIGNATURE blind_sig;
-        r = BLINDRSA_blind_sign(&blind_sig, rsa_priv, &blind_message);
+        BRSABlindSignature blind_sig;
+        r = brsa_blind_sign(&blind_sig, &kp, &blind_message);
         assert(r == 1);
 
-        BLINDRSA_SIGNATURE sig;
+        BRSASignature sig;
 
         // Verify the signature using the original message and secret.
-        r = BLINDRSA_finalize(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
+        r = brsa_finalize(&sig, &blind_sig, &secret, &kp, msg, msg_len);
         assert(r == 1);
 
-        BLINDRSA_SIGNATURE_deinit(&sig);
-        BLINDRSA_BLIND_SIGNATURE_deinit(&blind_sig);
-        BLINDRSA_BLIND_MESSAGE_deinit(&blind_message);
-        BLINDRSA_BLIND_SECRET_deinit(&secret);
+        brsa_signature_deinit(&sig);
+        brsa_blind_signature(&blind_sig);
+        brsa_blind_message_deinit(&blind_message);
+        brsa_blind_secret_deinit(&secret);
     }
 
     // Test validating the blind signature (`evaluated_message`) and the secret
     // (`inv`) from the test vector.
     {
-        BLINDRSA_BLIND_SIGNATURE blind_sig;
-        long                     len = -1;
-        blind_sig.blind_sig          = OPENSSL_hexstr2buf(TV_evaluated_message, &len);
+        BRSABlindSignature blind_sig;
+        long               len = -1;
+        blind_sig.blind_sig    = OPENSSL_hexstr2buf(TV_evaluated_message, &len);
         assert(blind_sig.blind_sig != NULL);
         assert(len == strlen(TV_evaluated_message) / 2);
         blind_sig.blind_sig_len = len;
 
-        BLINDRSA_BLIND_SECRET secret;
+        BRSABlindingSecret secret;
         len           = -1;
         secret.secret = OPENSSL_hexstr2buf(TV_inv, &len);
         assert(secret.secret != NULL);
         assert(len == strlen(TV_inv) / 2);
         secret.secret_len = len;
 
-        BLINDRSA_SIGNATURE sig;
-        r = BLINDRSA_finalize(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
+        BRSASignature sig;
+        r = brsa_finalize(&sig, &blind_sig, &secret, &kp, msg, msg_len);
         assert(r == 1);
 
-        r = BLINDRSA_verify(&sig, rsa_pub, msg, msg_len);
+        r = brsa_verify(&sig, &pk, msg, msg_len);
         assert(r == 1);
 
-        BLINDRSA_SIGNATURE_deinit(&sig);
+        brsa_signature_deinit(&sig);
         OPENSSL_free(secret.secret);
         OPENSSL_free(blind_sig.blind_sig);
     }
 
     OPENSSL_free(msg);
-    RSA_free(rsa_pub);
-    RSA_free(rsa_priv);
+    brsa_keypair_deinit(&kp);
+    brsa_publickey_deinit(&pk);
 
     return 0;
 }
