@@ -122,8 +122,9 @@ main(void)
         return 1;
     }
 
-    RSA *rsa = RSA_new();
-    assert(rsa != NULL);
+    // An RSA object with the private exponent `d` set.  This is the private and public key pair.
+    RSA *rsa_priv = RSA_new();
+    assert(rsa_priv != NULL);
     {
         BIGNUM *n = NULL, *e = NULL, *d = NULL;
 
@@ -136,7 +137,23 @@ main(void)
         r = BN_hex2bn(&d, TV_d);
         assert(r == strlen(TV_d));
 
-        r = RSA_set0_key(rsa, n, e, d);
+        r = RSA_set0_key(rsa_priv, n, e, d);
+        assert(r == 1);
+    }
+
+    // An RSA object without the private exponent `d`.  This is the public key.
+    RSA *rsa_pub = RSA_new();
+    assert(rsa_pub != NULL);
+    {
+        BIGNUM *n = NULL, *e = NULL;
+
+        r = BN_hex2bn(&n, TV_n);
+        assert(r == strlen(TV_n));
+
+        r = BN_hex2bn(&e, TV_e);
+        assert(r == strlen(TV_e));
+
+        r = RSA_set0_key(rsa_pub, n, e, NULL);
         assert(r == 1);
     }
 
@@ -156,16 +173,16 @@ main(void)
         // verification.
         RSA_BLIND_MESSAGE blind_message;
         RSA_BLIND_SECRET  secret;
-        r = RSA_blind(&blind_message, &secret, rsa, msg, msg_len);
+        r = RSA_blind(&blind_message, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
         // Compute a signature for the blind message.
         RSA_BLIND_SIGNATURE blind_sig;
-        r = RSA_blind_sign(&blind_sig, rsa, &blind_message);
+        r = RSA_blind_sign(&blind_sig, rsa_priv, &blind_message);
         assert(r == 1);
 
         // Verify the signature using the original message and secret.
-        r = RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len);
+        r = RSA_blind_verify(&blind_sig, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
         RSA_BLIND_SIGNATURE_deinit(&blind_sig);
@@ -190,7 +207,7 @@ main(void)
         assert(len == strlen(TV_inv) / 2);
         secret.secret_len = len;
 
-        r = RSA_blind_verify(&blind_sig, &secret, rsa, msg, msg_len);
+        r = RSA_blind_verify(&blind_sig, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
         OPENSSL_free(secret.secret);
@@ -198,7 +215,8 @@ main(void)
     }
 
     OPENSSL_free(msg);
-    RSA_free(rsa);
+    RSA_free(rsa_pub);
+    RSA_free(rsa_priv);
 
     return 0;
 }
