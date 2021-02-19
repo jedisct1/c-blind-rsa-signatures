@@ -11,7 +11,7 @@ extern "C" {
 #include <openssl/rsa.h>
 
 // Blind message to be signed
-typedef struct RSA_BLIND_MESSAGE {
+typedef struct BLINDRSA_BLIND_MESSAGE {
     uint8_t *blind_message;
     size_t   blind_message_len;
 } BLINDRSA_BLIND_MESSAGE;
