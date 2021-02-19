@@ -171,45 +171,54 @@ main(void)
         // Blind the message - Returns the blinded message as well as a secret
         // called `inv` in the spec, that will later be required for signature
         // verification.
-        RSA_BLIND_MESSAGE blind_message;
-        RSA_BLIND_SECRET  secret;
-        r = RSA_blind(&blind_message, &secret, rsa_pub, msg, msg_len);
+        BLINDRSA_BLIND_MESSAGE blind_message;
+        BLINDRSA_BLIND_SECRET  secret;
+        r = BLINDRSA_blind(&blind_message, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
         // Compute a signature for the blind message.
-        RSA_BLIND_SIGNATURE blind_sig;
-        r = RSA_blind_sign(&blind_sig, rsa_priv, &blind_message);
+        BLINDRSA_BLIND_SIGNATURE blind_sig;
+        r = BLINDRSA_blind_sign(&blind_sig, rsa_priv, &blind_message);
         assert(r == 1);
+
+        BLINDRSA_SIGNATURE sig;
 
         // Verify the signature using the original message and secret.
-        r = RSA_blind_verify(&blind_sig, &secret, rsa_pub, msg, msg_len);
+        r = BLINDRSA_blind_verify(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
-        RSA_BLIND_SIGNATURE_deinit(&blind_sig);
-        RSA_BLIND_MESSAGE_deinit(&blind_message);
-        RSA_BLIND_SECRET_deinit(&secret);
+        BLINDRSA_SIGNATURE_deinit(&sig);
+        BLINDRSA_BLIND_SIGNATURE_deinit(&blind_sig);
+        BLINDRSA_BLIND_MESSAGE_deinit(&blind_message);
+        BLINDRSA_BLIND_SECRET_deinit(&secret);
     }
 
     // Test validating the blind signature (`evaluated_message`) and the secret
     // (`inv`) from the test vector.
     {
-        RSA_BLIND_SIGNATURE blind_sig;
-        long                len = -1;
-        blind_sig.blind_sig     = OPENSSL_hexstr2buf(TV_evaluated_message, &len);
+        BLINDRSA_BLIND_SIGNATURE blind_sig;
+        long                     len = -1;
+        blind_sig.blind_sig          = OPENSSL_hexstr2buf(TV_evaluated_message, &len);
         assert(blind_sig.blind_sig != NULL);
         assert(len == strlen(TV_evaluated_message) / 2);
         blind_sig.blind_sig_len = len;
 
-        RSA_BLIND_SECRET secret;
+        BLINDRSA_BLIND_SECRET secret;
         len           = -1;
         secret.secret = OPENSSL_hexstr2buf(TV_inv, &len);
         assert(secret.secret != NULL);
         assert(len == strlen(TV_inv) / 2);
         secret.secret_len = len;
 
-        r = RSA_blind_verify(&blind_sig, &secret, rsa_pub, msg, msg_len);
+        BLINDRSA_SIGNATURE sig;
+
+        r = BLINDRSA_blind_verify(&sig, &blind_sig, &secret, rsa_pub, msg, msg_len);
         assert(r == 1);
 
+        r = BLINDRSA_verify(&sig, rsa_pub, msg, msg_len);
+        assert(r == 1);
+
+        BLINDRSA_SIGNATURE_deinit(&sig);
         OPENSSL_free(secret.secret);
         OPENSSL_free(blind_sig.blind_sig);
     }
