@@ -13,11 +13,6 @@
 int
 main(void)
 {
-    if (OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ADD_ALL_DIGESTS,
-                            NULL) != 1) {
-        return 1;
-    }
-
     const uint8_t msg[]   = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
     const size_t  msg_len = sizeof msg;
 

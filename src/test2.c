@@ -128,11 +128,6 @@ main(void)
 {
     int r;
 
-    if (OPENSSL_init_crypto(OPENSSL_INIT_LOAD_CRYPTO_STRINGS | OPENSSL_INIT_ADD_ALL_DIGESTS,
-                            NULL) != 1) {
-        return 1;
-    }
-
     // An RSA object with the private exponent `d` set.  This is the private and public key pair.
     RSA *rsa_priv = RSA_new();
     assert(rsa_priv != NULL);
