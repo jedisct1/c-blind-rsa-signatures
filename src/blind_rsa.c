@@ -65,7 +65,8 @@ brsa_secretkey_import(BRSASecretKey *sk, const uint8_t *der, const size_t der_le
     if (d2i_PrivateKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
         return 0;
     }
-    sk->rsa = EVP_PKEY_get0_RSA(evp_pkey);
+    sk->rsa = EVP_PKEY_get1_RSA(evp_pkey);
+    EVP_PKEY_free(evp_pkey);
 
     return 1;
 }
@@ -99,7 +100,8 @@ brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_le
     if (d2i_PublicKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
         return 0;
     }
-    pk->rsa = EVP_PKEY_get0_RSA(evp_pkey);
+    pk->rsa = EVP_PKEY_get1_RSA(evp_pkey);
+    EVP_PKEY_free(evp_pkey);
 
     return 1;
 }

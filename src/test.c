@@ -55,15 +55,16 @@ main(void)
     // Serialization/deserialization
     BRSASerializedKey sk_der;
     assert(brsa_secretkey_export(&sk_der, &sk) == 1);
+    brsa_secretkey_deinit(&sk);
     assert(brsa_secretkey_import(&sk, sk_der.bytes, sk_der.bytes_len) == 1);
     brsa_serializedkey_deinit(&sk_der);
+    brsa_secretkey_deinit(&sk);
 
     BRSASerializedKey pk_der;
     assert(brsa_publickey_export(&pk_der, &pk) == 1);
+    brsa_publickey_deinit(&pk);
     assert(brsa_publickey_import(&pk, pk_der.bytes, pk_der.bytes_len) == 1);
     brsa_serializedkey_deinit(&pk_der);
-
-    brsa_secretkey_deinit(&sk);
     brsa_publickey_deinit(&pk);
 
     return 0;
