@@ -66,6 +66,10 @@ int brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t de
 // Export a public key into a DER representation, and put the result into `serialized`
 int brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk);
 
+// Return an identifier for a public key.
+// Up to `id_len` bytes will be stored into `id`.
+int brsa_publickey_id(uint8_t *id, size_t id_len, const BRSAPublicKey *pk);
+
 // Free the internal structures of a secret key
 void brsa_secretkey_deinit(BRSASecretKey *sk);
 

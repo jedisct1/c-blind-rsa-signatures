@@ -1,6 +1,7 @@
 #include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
@@ -119,6 +120,35 @@ brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk)
         return 0;
     }
     serialized->bytes_len = (size_t) ret;
+
+    return 1;
+}
+
+int
+brsa_publickey_id(uint8_t *id, size_t id_len, const BRSAPublicKey *pk)
+{
+    BRSASerializedKey serialized;
+
+    if (brsa_publickey_export(&serialized, pk) != 1) {
+        return 0;
+    }
+
+    uint8_t    h[SHA256_DIGEST_LENGTH];
+    SHA256_CTX hash_ctx;
+    if (SHA256_Init(&hash_ctx) != 1 ||
+        SHA256_Update(&hash_ctx, serialized.bytes, serialized.bytes_len) != 1 ||
+        SHA256_Final(h, &hash_ctx) != 1) {
+        return 0;
+    }
+
+    brsa_serializedkey_deinit(&serialized);
+
+    size_t out_len = id_len;
+    if (out_len > sizeof h) {
+        out_len = sizeof h;
+        memset(id + out_len, 0, id_len - out_len);
+    }
+    memcpy(id, h, out_len);
 
     return 1;
 }
