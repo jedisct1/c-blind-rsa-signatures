@@ -17,6 +17,10 @@ This implementation is compatible with OpenSSL and BoringSSL.
     BRSAPublicKey pk;
     assert(brsa_keypair_generate(&sk, &pk, 2048) == 1);
 
+    // Get a key identifier
+    uint8_t key_id[4];
+    assert(brsa_publickey_id(key_id, sizeof key_id, &pk) == 1);
+
     // Blind a message - Returns the blinded message as well as a secret,
     // that will later be required for signature verification.
 
