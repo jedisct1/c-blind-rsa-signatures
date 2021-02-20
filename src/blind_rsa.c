@@ -405,9 +405,44 @@ brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
 }
 
 static int
+rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg,
+                  const size_t msg_len)
+{
+    const size_t modulus_bytes = RSA_size(pk->rsa);
+    if (sig->sig_len != modulus_bytes) {
+        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
+        return -1;
+    }
+
+    uint8_t msg_hash[HASH_DIGEST_LENGTH];
+    if (_hash(msg_hash, msg, msg_len) != 0) {
+        return -1;
+    }
+
+    const size_t em_len = sig->sig_len;
+    uint8_t *    em     = OPENSSL_malloc(em_len);
+    if (em == NULL) {
+        return -1;
+    }
+
+    if (RSA_public_decrypt(sig->sig_len, sig->sig, em, pk->rsa, RSA_NO_PADDING) < 0) {
+        OPENSSL_free(em);
+        return -1;
+    }
+
+    const EVP_MD *evp_md = HASH_EVP();
+    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, -1) != ERR_LIB_NONE) {
+        OPENSSL_free(em);
+        return -1;
+    }
+    OPENSSL_free(em);
+    return 0;
+}
+
+static int
 _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
-          const BRSABlindingSecret *secret_, BRSASecretKey *pk, BN_CTX *bn_ctx,
-          const uint8_t msg_hash[HASH_DIGEST_LENGTH])
+          const BRSABlindingSecret *secret_, BRSAPublicKey *pk, BN_CTX *bn_ctx, const uint8_t *msg,
+          size_t msg_len)
 {
     BIGNUM *secret  = BN_CTX_get(bn_ctx);
     BIGNUM *blind_z = BN_CTX_get(bn_ctx);
@@ -426,40 +461,23 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
         return -1;
     }
 
-    const size_t sig_len = RSA_size(pk->rsa);
-    if (brsa_signature_init(sig, sig_len) != 0) {
+    if (brsa_signature_init(sig, RSA_size(pk->rsa)) != 0) {
         return -1;
     }
-    if (BN_bn2bin_padded(sig->sig, (int) sig_len, z) != ERR_LIB_NONE) {
-        return -1;
-    }
-
-    const size_t em_len = sig_len;
-    uint8_t *    em     = OPENSSL_malloc(em_len);
-    if (em == NULL) {
+    if (BN_bn2bin_padded(sig->sig, (int) sig->sig_len, z) != ERR_LIB_NONE) {
         brsa_signature_deinit(sig);
         return -1;
     }
-
-    if (RSA_public_decrypt(sig_len, sig->sig, em, pk->rsa, RSA_NO_PADDING) < 0) {
-        OPENSSL_free(em);
+    if (rsassa_pss_verify(sig, pk, msg, msg_len) != 0) {
         brsa_signature_deinit(sig);
         return -1;
     }
-
-    const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, -1) != ERR_LIB_NONE) {
-        OPENSSL_free(em);
-        brsa_signature_deinit(sig);
-        return -1;
-    }
-    OPENSSL_free(em);
     return 0;
 }
 
 int
 brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
-              const BRSABlindingSecret *secret, BRSASecretKey *pk, const uint8_t *msg,
+              const BRSABlindingSecret *secret, BRSAPublicKey *pk, const uint8_t *msg,
               size_t msg_len)
 {
     if (_rsa_parameters_check(pk->rsa) != 0) {
@@ -471,18 +489,13 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
         return -1;
     }
 
-    uint8_t msg_hash[HASH_DIGEST_LENGTH];
-    if (_hash(msg_hash, msg, msg_len) != 0) {
-        return -1;
-    }
-
     BN_CTX *bn_ctx = BN_CTX_new();
     if (bn_ctx == NULL) {
         return -1;
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret = _finalize(sig, blind_sig, secret, pk, bn_ctx, msg_hash);
+    const int ret = _finalize(sig, blind_sig, secret, pk, bn_ctx, msg, msg_len);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
@@ -493,33 +506,5 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 int
 brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
 {
-    const size_t modulus_bytes = RSA_size(pk->rsa);
-    if (sig->sig_len != modulus_bytes) {
-        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
-        return -1;
-    }
-
-    uint8_t msg_hash[HASH_DIGEST_LENGTH];
-    if (_hash(msg_hash, msg, msg_len) != 0) {
-        return -1;
-    }
-
-    const size_t sig_len = sig->sig_len;
-    const size_t em_len  = sig_len;
-    uint8_t *    em      = OPENSSL_malloc(em_len);
-    if (em == NULL) {
-        return -1;
-    }
-    if (RSA_public_decrypt(sig_len, sig->sig, em, pk->rsa, RSA_NO_PADDING) == -1) {
-        OPENSSL_free(em);
-        return -1;
-    }
-
-    const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, -1) != ERR_LIB_NONE) {
-        OPENSSL_free(em);
-        return -1;
-    }
-    OPENSSL_free(em);
-    return 0;
+    return rsassa_pss_verify(sig, pk, msg, msg_len);
 }

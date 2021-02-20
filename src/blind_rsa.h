@@ -104,11 +104,11 @@ int brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
                     const BRSABlindMessage *blind_message);
 
 // Finalize a blind signature `blind_sig` for a (non-blind) message `msg` of length
-// `msg_len` bytes, the public key `pk` as well as `secret` originally computed by the
+// `msg_len` bytes, the secret key `sk` as well as `secret` originally computed by the
 // message author using `RSA_blind()`.
 // The non-blind signature is put into `sig`.
 int brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
-                  const BRSABlindingSecret *secret_, BRSASecretKey *pk, const uint8_t *msg,
+                  const BRSABlindingSecret *secret_, BRSAPublicKey *pk, const uint8_t *msg,
                   size_t msg_len);
 
 // Verify a non-blind signature `sig` for a message `msg` using the public key

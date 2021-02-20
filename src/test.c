@@ -42,10 +42,10 @@ main(void)
     BRSASignature sig;
 
     // A different message with the same signature should return an error.
-    assert(brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len - 1) == -1);
+    assert(brsa_finalize(&sig, &blind_sig, &secret, &pk, msg, msg_len - 1) == -1);
 
     // The correct message must pass verification.
-    assert(brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len) == 0);
+    assert(brsa_finalize(&sig, &blind_sig, &secret, &pk, msg, msg_len) == 0);
 
     brsa_blind_signature_deinit(&blind_sig);
     brsa_blind_secret_deinit(&secret);

@@ -198,7 +198,7 @@ main(void)
         BRSASignature sig;
 
         // Verify the signature using the original message and secret.
-        r = brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len);
+        r = brsa_finalize(&sig, &blind_sig, &secret, &pk, msg, msg_len);
         assert(r == 0);
 
         brsa_signature_deinit(&sig);
@@ -225,7 +225,7 @@ main(void)
         secret.secret_len = len;
 
         BRSASignature sig;
-        r = brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len);
+        r = brsa_finalize(&sig, &blind_sig, &secret, &pk, msg, msg_len);
         assert(r == 0);
 
         len                   = -1;
