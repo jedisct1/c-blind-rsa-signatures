@@ -124,6 +124,44 @@ static const char *TV_salt =
 
 #include "blind_rsa.h"
 
+static int
+hex_decode(uint8_t **const buf, size_t *const buf_len, const char *hex)
+{
+    size_t  i;
+    uint8_t h       = 0;
+    size_t  hex_len = strlen(hex);
+
+    *buf = NULL;
+    if ((hex_len & 1) != 0) {
+        return -1;
+    }
+    *buf_len = hex_len / 2;
+    if ((*buf = OPENSSL_malloc(*buf_len)) == NULL) {
+        return -1;
+    }
+    for (i = 0; i < hex_len; i++) {
+        const char c = hex[i];
+        if (c >= '0' && c <= '9') {
+            h |= c - '0';
+        } else if (c >= 'a' && c <= 'f') {
+            h |= c - 'a' + 10;
+        } else if (c >= 'A' && c <= 'F') {
+            h |= c - 'A' + 10;
+        } else {
+            OPENSSL_free(*buf);
+            *buf = NULL;
+            return -1;
+        }
+        if ((i & 1) == 0) {
+            h <<= 4;
+        } else {
+            (*buf)[i / 2] = h;
+            h             = 0;
+        }
+    }
+    return 0;
+}
+
 int
 main(void)
 {
@@ -141,13 +179,13 @@ main(void)
         BIGNUM *n = NULL, *e = NULL, *d = NULL;
 
         r = BN_hex2bn(&n, TV_n);
-        assert(r == strlen(TV_n));
+        assert(r == (int) strlen(TV_n));
 
         r = BN_hex2bn(&e, TV_e);
-        assert(r == strlen(TV_e));
+        assert(r == (int) strlen(TV_e));
 
         r = BN_hex2bn(&d, TV_d);
-        assert(r == strlen(TV_d));
+        assert(r == (int) strlen(TV_d));
 
         r = RSA_set0_key(rsa_priv, n, e, d);
         assert(r == ERR_LIB_NONE);
@@ -161,10 +199,10 @@ main(void)
         BIGNUM *n = NULL, *e = NULL;
 
         r = BN_hex2bn(&n, TV_n);
-        assert(r == strlen(TV_n));
+        assert(r == (int) strlen(TV_n));
 
         r = BN_hex2bn(&e, TV_e);
-        assert(r == strlen(TV_e));
+        assert(r == (int) strlen(TV_e));
 
         r = RSA_set0_key(rsa_pub, n, e, NULL);
         assert(r == ERR_LIB_NONE);
@@ -173,13 +211,8 @@ main(void)
 
     uint8_t *msg;
     size_t   msg_len;
-    {
-        long len = -1;
-        msg      = OPENSSL_hexstr2buf(TV_msg, &len);
-        assert(msg != NULL);
-        assert(len == strlen(TV_msg) / 2);
-        msg_len = len;
-    }
+    r = hex_decode(&msg, &msg_len, TV_msg);
+    assert(r == 0);
 
     {
         // Blind the message - Returns the blinded message as well as a secret
@@ -211,35 +244,28 @@ main(void)
     // (`inv`) from the test vector.
     {
         BRSABlindSignature blind_sig;
-        long               len = -1;
-        blind_sig.blind_sig    = OPENSSL_hexstr2buf(TV_evaluated_message, &len);
-        assert(blind_sig.blind_sig != NULL);
-        assert(len == strlen(TV_evaluated_message) / 2);
-        blind_sig.blind_sig_len = len;
+        r = hex_decode(&blind_sig.blind_sig, &blind_sig.blind_sig_len, TV_evaluated_message);
+        assert(r == 0);
 
         BRSABlindingSecret secret;
-        len           = -1;
-        secret.secret = OPENSSL_hexstr2buf(TV_inv, &len);
-        assert(secret.secret != NULL);
-        assert(len == strlen(TV_inv) / 2);
-        secret.secret_len = len;
+        r = hex_decode(&secret.secret, &secret.secret_len, TV_inv);
+        assert(r == 0);
 
         BRSASignature sig;
         r = brsa_finalize(&sig, &blind_sig, &secret, &pk, msg, msg_len);
         assert(r == 0);
 
-        len                   = -1;
-        uint8_t *expected_sig = OPENSSL_hexstr2buf(TV_sig, &len);
-        assert(len == strlen(TV_sig) / 2);
-        size_t expected_sig_len = len;
+        BRSASignature expected_sig;
+        r = hex_decode(&expected_sig.sig, &expected_sig.sig_len, TV_sig);
+        assert(r == 0);
 
-        assert(sig.sig_len == expected_sig_len);
-        assert(memcmp(sig.sig, expected_sig, sig.sig_len) == 0);
+        assert(sig.sig_len == expected_sig.sig_len);
+        assert(memcmp(sig.sig, expected_sig.sig, sig.sig_len) == 0);
 
         r = brsa_verify(&sig, &pk, msg, msg_len);
         assert(r == 0);
 
-        OPENSSL_free(expected_sig);
+        brsa_signature_deinit(&expected_sig);
         brsa_signature_deinit(&sig);
         OPENSSL_free(secret.secret);
         OPENSSL_free(blind_sig.blind_sig);
@@ -249,25 +275,24 @@ main(void)
     // The result is supposed to match the `evaluated_message` in the test vector.
     {
         BRSABlindMessage blind_message;
-        long             len        = -1;
-        blind_message.blind_message = OPENSSL_hexstr2buf(TV_blinded_message, &len);
-        assert(blind_message.blind_message != NULL);
-        assert(len == strlen(TV_blinded_message) / 2);
-        blind_message.blind_message_len = len;
+        r = hex_decode(&blind_message.blind_message, &blind_message.blind_message_len,
+                       TV_blinded_message);
+        assert(r == 0);
 
         BRSABlindSignature blind_sig;
         r = brsa_blind_sign(&blind_sig, &sk, &blind_message);
         assert(r == 0);
 
-        len                         = -1;
-        uint8_t *expected_blind_sig = OPENSSL_hexstr2buf(TV_evaluated_message, &len);
-        assert(len == strlen(TV_evaluated_message) / 2);
-        size_t expected_blind_sig_len = len;
+        BRSABlindSignature expected_blind_sig;
+        r = hex_decode(&expected_blind_sig.blind_sig, &expected_blind_sig.blind_sig_len,
+                       TV_evaluated_message);
+        assert(r == 0);
 
-        assert(blind_sig.blind_sig_len == expected_blind_sig_len);
-        assert(memcmp(blind_sig.blind_sig, expected_blind_sig, blind_sig.blind_sig_len) == 0);
+        assert(blind_sig.blind_sig_len == expected_blind_sig.blind_sig_len);
+        assert(memcmp(blind_sig.blind_sig, expected_blind_sig.blind_sig, blind_sig.blind_sig_len) ==
+               0);
 
-        OPENSSL_free(expected_blind_sig);
+        brsa_blind_signature_deinit(&expected_blind_sig);
         brsa_blind_signature_deinit(&blind_sig);
         OPENSSL_free(blind_message.blind_message);
     }
