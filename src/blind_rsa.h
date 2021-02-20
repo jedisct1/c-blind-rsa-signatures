@@ -117,7 +117,7 @@ int brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
 
 // Compute a signature for a message `msg` given the signature `blind(msg, secret)`.
 // The signature of `msg` is put into `sig`. Note that before returning, the function
-// automatically verifies that the signature is valid for the given public key.
+// automatically verifies that the new signature is valid for the given public key.
 int brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
                   const BRSABlindingSecret *secret_, BRSAPublicKey *pk, const uint8_t *msg,
                   size_t msg_len) __attribute__((nonnull));

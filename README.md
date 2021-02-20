@@ -77,11 +77,15 @@ Some additional helper functions for key management are included:
     assert(brsa_secretkey_export(&sk_der, &sk) == 0);
     assert(brsa_publickey_export(&pk_der, &pk) == 0);
 
+    // Free key resources
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
+
     // Key deserialization
     assert(brsa_secretkey_import(&sk, sk_der.bytes, sk_der.bytes_len) == 0);
     assert(brsa_publickey_import(&pk, pk_der.bytes, pk_der.bytes_len) == 0);
-    brsa_secretkey_deinit(&sk);
-    brsa_publickey_deinit(&pk);
+    brsa_serializedkey_deinit(&sk_der);
+    brsa_serializedkey_deinit(&pk_der);
 ```
 
 All these functions return `0` on success and `-1` on error.

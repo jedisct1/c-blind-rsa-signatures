@@ -61,7 +61,6 @@ brsa_secretkey_import(BRSASecretKey *sk, const uint8_t *der, const size_t der_le
     EVP_PKEY *     evp_pkey = NULL;
     const uint8_t *der_     = der;
 
-    brsa_secretkey_deinit(sk);
     if (der_len > LONG_MAX) {
         return -1;
     }
@@ -97,7 +96,6 @@ brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_le
     EVP_PKEY *     evp_pkey = NULL;
     const uint8_t *der_     = der;
 
-    brsa_publickey_deinit(pk);
     if (der_len > LONG_MAX) {
         return -1;
     }
