@@ -406,7 +406,7 @@ brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
 
 static int
 _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
-          const BRSABlindingSecret *secret_, BRSASecretKey *sk, BN_CTX *bn_ctx,
+          const BRSABlindingSecret *secret_, BRSASecretKey *pk, BN_CTX *bn_ctx,
           const uint8_t msg_hash[HASH_DIGEST_LENGTH])
 {
     BIGNUM *secret  = BN_CTX_get(bn_ctx);
@@ -422,11 +422,11 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
         return -1;
     }
 
-    if (BN_mod_mul(z, blind_z, secret, RSA_get0_n(sk->rsa), bn_ctx) != ERR_LIB_NONE) {
+    if (BN_mod_mul(z, blind_z, secret, RSA_get0_n(pk->rsa), bn_ctx) != ERR_LIB_NONE) {
         return -1;
     }
 
-    const size_t zs_len = RSA_size(sk->rsa);
+    const size_t zs_len = RSA_size(pk->rsa);
     uint8_t *    zs     = OPENSSL_malloc(zs_len);
     if (zs == NULL) {
         return -1;
@@ -438,14 +438,14 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
     if (brsa_signature_init(sig, zs_len) != 0) {
         return -1;
     }
-    if (RSA_public_decrypt(zs_len, zs, sig->sig, sk->rsa, RSA_NO_PADDING) < 0) {
+    if (RSA_public_decrypt(zs_len, zs, sig->sig, pk->rsa, RSA_NO_PADDING) < 0) {
         OPENSSL_free(zs);
         return -1;
     }
     OPENSSL_free(zs);
 
     const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(sk->rsa, msg_hash, evp_md, evp_md, sig->sig, -1) !=
+    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, sig->sig, -1) !=
         ERR_LIB_NONE) {
         brsa_signature_deinit(sig);
         return -1;
@@ -455,13 +455,13 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 
 int
 brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
-              const BRSABlindingSecret *secret, BRSASecretKey *sk, const uint8_t *msg,
+              const BRSABlindingSecret *secret, BRSASecretKey *pk, const uint8_t *msg,
               size_t msg_len)
 {
-    if (_rsa_parameters_check(sk->rsa) != 0) {
+    if (_rsa_parameters_check(pk->rsa) != 0) {
         return -1;
     }
-    const size_t modulus_bytes = RSA_size(sk->rsa);
+    const size_t modulus_bytes = RSA_size(pk->rsa);
     if (blind_sig->blind_sig_len != modulus_bytes || secret->secret_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
         return -1;
@@ -478,7 +478,7 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret = _finalize(sig, blind_sig, secret, sk, bn_ctx, msg_hash);
+    const int ret = _finalize(sig, blind_sig, secret, pk, bn_ctx, msg_hash);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
