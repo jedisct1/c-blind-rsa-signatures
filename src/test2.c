@@ -53,6 +53,30 @@ static const char *TV_inv =
     "4e3584bd7ca054df18a1504b89d1d1675d0966c4ae1407be325cdf623cf13ff13e4a28b594d59e3eadbadf6136eee7"
     "a59d6a444c9eb4e2198e8a974f27a39eb63af2c9af3870488b8adaad444674f512133ad80b9220e09158521614f1fa"
     "adfe8505ef57b7df6813048603f0dd04f4280177a11380fbfc861dbcbd7418d62155248dad5fdec0991f";
+static const char *TV_sig =
+    "6fef8bf9bc182cd8cf7ce45c7dcf0e6f3e518ae48f06f3c670c649ac737a8b8119a34d51641785be151a697ed7825f"
+    "dfece82865123445eab03eb4bb91cecf4d6951738495f8481151b62de869658573df4e50a95c17c31b52e154ae26a0"
+    "4067d5ecdc1592c287550bb982a5bb9c30fd53a768cee6baabb3d483e9f1e2da954c7f4cf492fe3944d2fe456c1eca"
+    "f0840369e33fb4010e6b44bb1d721840513524d8e9a3519f40d1b81ae34fb7a31ee6b7ed641cb16c2ac999004c2191"
+    "de0201457523f5a4700dd649267d9286f5c1d193f1454c9f868a57816bf5ff76c838a2eeb616a3fc9976f65d4371de"
+    "ecfbab29362caebdff69c635fe5a2113da4d4d8c24f0b16a0584fa05e80e607c5d9a2f765f1f069f8d4da21f27c2a3"
+    "b5c984b4ab24899bef46c6d9323df4862fe51ce300fca40fb539c3bb7fe2dcc9409e425f2d3b95e70e9c49c5feb6ec"
+    "c9d43442c33d50003ee936845892fb8be475647da9a080f5bc7f8a716590b3745c2209fe05b17992830ce15f32c7b2"
+    "2cde755c8a2fe50bd814a0434130b807dc1b7218d4e85342d70695a5d7f29306f25623ad1e8aa08ef71b54b8ee447b"
+    "5f64e73d09bdd6c3b7ca224058d7c67cc7551e9241688ada12d859cb7646fbd3ed8b34312f3b49d69802f0eaa11bc4"
+    "211c2f7a29cd5c01ed01a39001c5856fab36228f5ee2f2e1110811872fe7c865c42ed59029c706195d52";
+static const char *TV_blinded_message =
+    "10c166c6a711e81c46f45b18e5873cc4f494f003180dd7f115585d871a28930259654fe28a54dab319cc5011204c83"
+    "73b50a57b0fdc7a678bd74c523259dfe4fd5ea9f52f170e19dfa332930ad1609fc8a00902d725cfe50685c95e5b296"
+    "8c9a2828a21207fcf393d15f849769e2af34ac4259d91dfd98c3a707c509e1af55647efaa31290ddf48e0133b79856"
+    "2af5eabd327270ac2fb6c594734ce339a14ea4fe1b9a2f81c0bc230ca523bda17ff42a377266bc2778a274c0ae5ec5"
+    "a8cbbe364fcf0d2403f7ee178d77ff28b67a20c7ceec009182dbcaa9bc99b51ebbf13b7d542be337172c6474f2cd35"
+    "61219fe0dfa3fb207cff89632091ab841cf38d8aa88af6891539f263adb8eac6402c41b6ebd72984e43666e537f5f5"
+    "fe27b2b5aa114957e9a580730308a5f5a9c63a1eb599f093ab401d0c6003a451931b6d124180305705845060ebba6b"
+    "0036154fcef3e5e9f9e4b87e8f084542fd1dd67e7782a5585150181c01eb6d90cb95883837384a5b91dbb606f26605"
+    "9ecc51b5acbaa280e45cfd2eec8cc1cdb1b7211c8e14805ba683f9b78824b2eb005bc8a7d7179a36c152cb87c8219e"
+    "5569bba911bb32a1b923ca83de0e03fb10fba75d85c55907dda5a2606bf918b056c3808ba496a4d95532212040a5f4"
+    "4f37e1097f26dc27b98a51837daa78f23e532156296b64352669c94a8a855acf30533d8e0594ace7c442";
 
 // Parts of the test vector that we are not using in this test.
 #if 0
@@ -68,30 +92,6 @@ static const char *TV_encoded_message =
     "ce275aa15acb032ca951b3e0a3404b7f33f655b7c7d83a2f8d1b6bbff49d5fcedf2e030e80881aa436db27a5c0dea1"
     "3f32e7d460dbf01240c2320c2bb5b3225b17145c72d61d47c8f84d1e19417ebd8ce3638a82d395cc6f7050b6209d92"
     "83dc7b93fecc04f3f9e7f566829ac41568ef799480c733c09759aa9734e2013d7640dc6151018ea902bc";
-static const char *TV_blinded_message =
-    "10c166c6a711e81c46f45b18e5873cc4f494f003180dd7f115585d871a28930259654fe28a54dab319cc5011204c83"
-    "73b50a57b0fdc7a678bd74c523259dfe4fd5ea9f52f170e19dfa332930ad1609fc8a00902d725cfe50685c95e5b296"
-    "8c9a2828a21207fcf393d15f849769e2af34ac4259d91dfd98c3a707c509e1af55647efaa31290ddf48e0133b79856"
-    "2af5eabd327270ac2fb6c594734ce339a14ea4fe1b9a2f81c0bc230ca523bda17ff42a377266bc2778a274c0ae5ec5"
-    "a8cbbe364fcf0d2403f7ee178d77ff28b67a20c7ceec009182dbcaa9bc99b51ebbf13b7d542be337172c6474f2cd35"
-    "61219fe0dfa3fb207cff89632091ab841cf38d8aa88af6891539f263adb8eac6402c41b6ebd72984e43666e537f5f5"
-    "fe27b2b5aa114957e9a580730308a5f5a9c63a1eb599f093ab401d0c6003a451931b6d124180305705845060ebba6b"
-    "0036154fcef3e5e9f9e4b87e8f084542fd1dd67e7782a5585150181c01eb6d90cb95883837384a5b91dbb606f26605"
-    "9ecc51b5acbaa280e45cfd2eec8cc1cdb1b7211c8e14805ba683f9b78824b2eb005bc8a7d7179a36c152cb87c8219e"
-    "5569bba911bb32a1b923ca83de0e03fb10fba75d85c55907dda5a2606bf918b056c3808ba496a4d95532212040a5f4"
-    "4f37e1097f26dc27b98a51837daa78f23e532156296b64352669c94a8a855acf30533d8e0594ace7c442";
-static const char *TV_sig =
-    "6fef8bf9bc182cd8cf7ce45c7dcf0e6f3e518ae48f06f3c670c649ac737a8b8119a34d51641785be151a697ed7825f"
-    "dfece82865123445eab03eb4bb91cecf4d6951738495f8481151b62de869658573df4e50a95c17c31b52e154ae26a0"
-    "4067d5ecdc1592c287550bb982a5bb9c30fd53a768cee6baabb3d483e9f1e2da954c7f4cf492fe3944d2fe456c1eca"
-    "f0840369e33fb4010e6b44bb1d721840513524d8e9a3519f40d1b81ae34fb7a31ee6b7ed641cb16c2ac999004c2191"
-    "de0201457523f5a4700dd649267d9286f5c1d193f1454c9f868a57816bf5ff76c838a2eeb616a3fc9976f65d4371de"
-    "ecfbab29362caebdff69c635fe5a2113da4d4d8c24f0b16a0584fa05e80e607c5d9a2f765f1f069f8d4da21f27c2a3"
-    "b5c984b4ab24899bef46c6d9323df4862fe51ce300fca40fb539c3bb7fe2dcc9409e425f2d3b95e70e9c49c5feb6ec"
-    "c9d43442c33d50003ee936845892fb8be475647da9a080f5bc7f8a716590b3745c2209fe05b17992830ce15f32c7b2"
-    "2cde755c8a2fe50bd814a0434130b807dc1b7218d4e85342d70695a5d7f29306f25623ad1e8aa08ef71b54b8ee447b"
-    "5f64e73d09bdd6c3b7ca224058d7c67cc7551e9241688ada12d859cb7646fbd3ed8b34312f3b49d69802f0eaa11bc4"
-    "211c2f7a29cd5c01ed01a39001c5856fab36228f5ee2f2e1110811872fe7c865c42ed59029c706195d52";
 static const char *TV_p =
     "e1f4d7a34802e27c7392a3cea32a262a34dc3691bd87f3f310dc75673488930559c120fd0410194fb8a0da55bd0b81"
     "227e843fdca6692ae80e5a5d414116d4803fca7d8c30eaaae57e44a1816ebb5c5b0606c536246c7f11985d73168415"
@@ -202,7 +202,7 @@ main(void)
         assert(r == 0);
 
         brsa_signature_deinit(&sig);
-        brsa_blind_signature(&blind_sig);
+        brsa_blind_signature_deinit(&blind_sig);
         brsa_blind_message_deinit(&blind_message);
         brsa_blind_secret_deinit(&secret);
     }
@@ -228,12 +228,48 @@ main(void)
         r = brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len);
         assert(r == 0);
 
+        len                   = -1;
+        uint8_t *expected_sig = OPENSSL_hexstr2buf(TV_sig, &len);
+        assert(len == strlen(TV_sig) / 2);
+        size_t expected_sig_len = len;
+
+        assert(sig.sig_len == expected_sig_len);
+        assert(memcmp(sig.sig, expected_sig, sig.sig_len) == 0);
+
         r = brsa_verify(&sig, &pk, msg, msg_len);
         assert(r == 0);
 
+        OPENSSL_free(expected_sig);
         brsa_signature_deinit(&sig);
         OPENSSL_free(secret.secret);
         OPENSSL_free(blind_sig.blind_sig);
+    }
+
+    // Test computing the blind signature on the `blinded_message` in the test vector.
+    // The result is supposed to match the `evaluated_message` in the test vector.
+    {
+        BRSABlindMessage blind_message;
+        long             len        = -1;
+        blind_message.blind_message = OPENSSL_hexstr2buf(TV_blinded_message, &len);
+        assert(blind_message.blind_message != NULL);
+        assert(len == strlen(TV_blinded_message) / 2);
+        blind_message.blind_message_len = len;
+
+        BRSABlindSignature blind_sig;
+        r = brsa_blind_sign(&blind_sig, &sk, &blind_message);
+        assert(r == 0);
+
+        len                         = -1;
+        uint8_t *expected_blind_sig = OPENSSL_hexstr2buf(TV_evaluated_message, &len);
+        assert(len == strlen(TV_evaluated_message) / 2);
+        size_t expected_blind_sig_len = len;
+
+        assert(blind_sig.blind_sig_len == expected_blind_sig_len);
+        assert(memcmp(blind_sig.blind_sig, expected_blind_sig, blind_sig.blind_sig_len) == 0);
+
+        OPENSSL_free(expected_blind_sig);
+        brsa_blind_signature_deinit(&blind_sig);
+        OPENSSL_free(blind_message.blind_message);
     }
 
     OPENSSL_free(msg);

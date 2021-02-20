@@ -47,7 +47,7 @@ main(void)
     // The correct message must pass verification.
     assert(brsa_finalize(&sig, &blind_sig, &secret, &sk, msg, msg_len) == 0);
 
-    brsa_blind_signature(&blind_sig);
+    brsa_blind_signature_deinit(&blind_sig);
     brsa_blind_secret_deinit(&secret);
 
     // Verify the non-blind signature
