@@ -7,6 +7,7 @@
 #include <openssl/crypto.h>
 #include <openssl/err.h>
 #include <openssl/evp.h>
+#include <openssl/rand.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
 
@@ -60,6 +61,7 @@ brsa_secretkey_import(BRSASecretKey *sk, const uint8_t *der, const size_t der_le
     EVP_PKEY *     evp_pkey = NULL;
     const uint8_t *der_     = der;
 
+    brsa_secretkey_deinit(sk);
     if (der_len > LONG_MAX) {
         return -1;
     }
@@ -95,6 +97,7 @@ brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_le
     EVP_PKEY *     evp_pkey = NULL;
     const uint8_t *der_     = der;
 
+    brsa_publickey_deinit(pk);
     if (der_len > LONG_MAX) {
         return -1;
     }
@@ -379,6 +382,16 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
     OPENSSL_clear_free(padded, padded_len);
 
     return ret;
+}
+
+int
+brsa_blind_message_generate(BRSABlindMessage *blind_message, uint8_t *msg, size_t msg_len,
+                            BRSABlindingSecret *secret, BRSAPublicKey *pk)
+{
+    if (RAND_bytes(msg, msg_len) != ERR_LIB_NONE) {
+        return -1;
+    }
+    return brsa_blind(blind_message, secret, pk, msg, msg_len);
 }
 
 int
