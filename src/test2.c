@@ -202,7 +202,7 @@ main(void)
         assert(r == 0);
 
         brsa_signature_deinit(&sig);
-        brsa_blind_signature(&blind_sig);
+        brsa_blind_signature_deinit(&blind_sig);
         brsa_blind_message_deinit(&blind_message);
         brsa_blind_secret_deinit(&secret);
     }

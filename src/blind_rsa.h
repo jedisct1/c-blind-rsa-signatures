@@ -86,7 +86,7 @@ void brsa_blind_message_deinit(BRSABlindMessage *blind_message);
 void brsa_blind_secret_deinit(BRSABlindingSecret *secret);
 
 // Free the internal structures of a blind signature
-void brsa_blind_signature(BRSABlindSignature *blind_sig);
+void brsa_blind_signature_deinit(BRSABlindSignature *blind_sig);
 
 // Free the internal structures of a signature
 void brsa_signature_deinit(BRSASignature *blind_sig);

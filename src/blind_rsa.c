@@ -211,7 +211,7 @@ brsa_blind_secret_init(BRSABlindingSecret *secret, size_t modulus_bytes)
 }
 
 void
-brsa_blind_signature(BRSABlindSignature *blind_sig)
+brsa_blind_signature_deinit(BRSABlindSignature *blind_sig)
 {
     OPENSSL_free(blind_sig->blind_sig);
     blind_sig->blind_sig = NULL;
@@ -222,7 +222,7 @@ brsa_blind_signature_init(BRSABlindSignature *blind_sig, size_t blind_sig_len)
 {
     blind_sig->blind_sig_len = blind_sig_len;
     if ((blind_sig->blind_sig = OPENSSL_malloc(blind_sig->blind_sig_len)) == NULL) {
-        brsa_blind_signature(blind_sig);
+        brsa_blind_signature_deinit(blind_sig);
         return -1;
     }
     return 0;
