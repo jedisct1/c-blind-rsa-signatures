@@ -426,30 +426,34 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
         return -1;
     }
 
-    const size_t zs_len = RSA_size(pk->rsa);
-    uint8_t *    zs     = OPENSSL_malloc(zs_len);
-    if (zs == NULL) {
+    const size_t sig_len = RSA_size(pk->rsa);
+    if (brsa_signature_init(sig, sig_len) != 0) {
         return -1;
     }
-    if (BN_bn2bin_padded(zs, (int) zs_len, z) != ERR_LIB_NONE) {
+    if (BN_bn2bin_padded(sig->sig, (int) sig_len, z) != ERR_LIB_NONE) {
         return -1;
     }
 
-    if (brsa_signature_init(sig, zs_len) != 0) {
-        return -1;
-    }
-    if (RSA_public_decrypt(zs_len, zs, sig->sig, pk->rsa, RSA_NO_PADDING) < 0) {
-        OPENSSL_free(zs);
-        return -1;
-    }
-    OPENSSL_free(zs);
-
-    const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, sig->sig, -1) !=
-        ERR_LIB_NONE) {
+    const size_t em_len = sig_len;
+    uint8_t *    em     = OPENSSL_malloc(em_len);
+    if (em == NULL) {
         brsa_signature_deinit(sig);
         return -1;
     }
+
+    if (RSA_public_decrypt(sig_len, sig->sig, em, pk->rsa, RSA_NO_PADDING) < 0) {
+        OPENSSL_free(em);
+        brsa_signature_deinit(sig);
+        return -1;
+    }
+
+    const EVP_MD *evp_md = HASH_EVP();
+    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, -1) != ERR_LIB_NONE) {
+        OPENSSL_free(em);
+        brsa_signature_deinit(sig);
+        return -1;
+    }
+    OPENSSL_free(em);
     return 0;
 }
 
@@ -500,10 +504,22 @@ brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, siz
         return -1;
     }
 
-    const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, sig->sig, -1) !=
-        ERR_LIB_NONE) {
+    const size_t sig_len = sig->sig_len;
+    const size_t em_len  = sig_len;
+    uint8_t *    em      = OPENSSL_malloc(em_len);
+    if (em == NULL) {
         return -1;
     }
+    if (RSA_public_decrypt(sig_len, sig->sig, em, pk->rsa, RSA_NO_PADDING) == -1) {
+        OPENSSL_free(em);
+        return -1;
+    }
+
+    const EVP_MD *evp_md = HASH_EVP();
+    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, -1) != ERR_LIB_NONE) {
+        OPENSSL_free(em);
+        return -1;
+    }
+    OPENSSL_free(em);
     return 0;
 }
