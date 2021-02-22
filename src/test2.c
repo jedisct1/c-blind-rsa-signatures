@@ -29,7 +29,7 @@ static const char *TV_d =
 static const char *TV_msg =
     "8f3dc6fb8c4a02f4d6352edf0907822c1210a9b32f9bdda4c45a698c80023aa6b59f8cfec5fdbb36331372ebefedae"
     "7d";
-static const char *TV_evaluated_message =
+static const char *TV_blind_sig =
     "364f6a40dbfbc3bbb257943337eeff791a0f290898a6791283bba581d9eac90a6376a837241f5f73a78a5c6746e130"
     "6ba3adab6067c32ff69115734ce014d354e2f259d4cbfb890244fd451a497fe6ecf9aa90d19a2d441162f7eaa7ce3f"
     "c4e89fd4e76b7ae585be2a2c0fd6fb246b8ac8d58bcb585634e30c9168a434786fe5e0b74bfe8187b47ac091aa571f"
@@ -240,11 +240,11 @@ main(void)
         brsa_blind_secret_deinit(&secret);
     }
 
-    // Test validating the blind signature (`evaluated_message`) and the secret
+    // Test validating the blind signature (`blind_sig`) and the secret
     // (`inv`) from the test vector.
     {
         BRSABlindSignature blind_sig;
-        r = hex_decode(&blind_sig.blind_sig, &blind_sig.blind_sig_len, TV_evaluated_message);
+        r = hex_decode(&blind_sig.blind_sig, &blind_sig.blind_sig_len, TV_blind_sig);
         assert(r == 0);
 
         BRSABlindingSecret secret;
@@ -272,7 +272,7 @@ main(void)
     }
 
     // Test computing the blind signature on the `blinded_message` in the test vector.
-    // The result is supposed to match the `evaluated_message` in the test vector.
+    // The result is supposed to match the `blind_sig` in the test vector.
     {
         BRSABlindMessage blind_message;
         r = hex_decode(&blind_message.blind_message, &blind_message.blind_message_len,
@@ -285,7 +285,7 @@ main(void)
 
         BRSABlindSignature expected_blind_sig;
         r = hex_decode(&expected_blind_sig.blind_sig, &expected_blind_sig.blind_sig_len,
-                       TV_evaluated_message);
+                       TV_blind_sig);
         assert(r == 0);
 
         assert(blind_sig.blind_sig_len == expected_blind_sig.blind_sig_len);
