@@ -234,18 +234,18 @@ brsa_blind_message_init(BRSABlindMessage *blind_message, size_t modulus_bytes)
 }
 
 void
-brsa_blind_secret_deinit(BRSABlindingSecret *secret)
+brsa_blinding_secret_deinit(BRSABlindingSecret *secret)
 {
     OPENSSL_clear_free(secret->secret, secret->secret_len);
     secret->secret = NULL;
 }
 
 static int
-brsa_blind_secret_init(BRSABlindingSecret *secret, size_t modulus_bytes)
+brsa_blinding_secret_init(BRSABlindingSecret *secret, size_t modulus_bytes)
 {
     secret->secret_len = modulus_bytes;
     if ((secret->secret = OPENSSL_malloc(secret->secret_len)) == NULL) {
-        brsa_blind_secret_deinit(secret);
+        brsa_blinding_secret_deinit(secret);
         return -1;
     }
     return 0;
@@ -345,7 +345,7 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
     if (brsa_blind_message_init(blind_message, modulus_bytes) != 0) {
         return -1;
     }
-    if (brsa_blind_secret_init(secret_, modulus_bytes) != 0) {
+    if (brsa_blinding_secret_init(secret_, modulus_bytes) != 0) {
         return -1;
     }
     if (BN_bn2bin_padded(blind_message->blind_message, (int) blind_message->blind_message_len,

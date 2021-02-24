@@ -60,7 +60,7 @@ This implementation requires OpenSSL or BoringSSL.
     BRSASignature sig;
     assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
     brsa_blind_signature_deinit(&blind_sig);
-    brsa_blind_secret_deinit(&client_secret);
+    brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
     assert(brsa_verify(&sig, &pk, msg, msg_len) == 0);
