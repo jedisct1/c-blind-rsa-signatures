@@ -27,6 +27,28 @@
 #define HASH_Update SHA384_Update
 #define HASH_Final SHA384_Final
 
+static BN_MONT_CTX *
+new_mont_domain(const BIGNUM *n)
+{
+    BN_MONT_CTX *mont_ctx = BN_MONT_CTX_new();
+    if (mont_ctx == NULL) {
+        return NULL;
+    }
+    BN_CTX *bn_ctx = BN_CTX_new();
+    if (bn_ctx == NULL) {
+        return NULL;
+    }
+    BN_CTX_start(bn_ctx);
+    const int ret = BN_MONT_CTX_set(mont_ctx, n, bn_ctx);
+    if (ret != ERR_LIB_NONE) {
+        mont_ctx = NULL;
+    }
+    BN_CTX_end(bn_ctx);
+    BN_CTX_free(bn_ctx);
+
+    return mont_ctx;
+}
+
 int
 brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
 {
@@ -47,8 +69,15 @@ brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
     BN_free(e);
 
     if (pk != NULL) {
-        pk->rsa = RSAPublicKey_dup(sk->rsa);
+        pk->mont_ctx = NULL;
+        pk->rsa      = RSAPublicKey_dup(sk->rsa);
         if (pk->rsa == NULL) {
+            brsa_publickey_deinit(pk);
+            return -1;
+        }
+        pk->mont_ctx = new_mont_domain(RSA_get0_n(pk->rsa));
+        if (pk->mont_ctx == NULL) {
+            brsa_publickey_deinit(pk);
             return -1;
         }
     }
@@ -102,9 +131,18 @@ brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_le
     if (d2i_PublicKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
         return -1;
     }
-    pk->rsa = EVP_PKEY_get1_RSA(evp_pkey);
+    pk->mont_ctx = NULL;
+    pk->rsa      = EVP_PKEY_get1_RSA(evp_pkey);
     EVP_PKEY_free(evp_pkey);
-
+    if (pk->rsa == NULL) {
+        brsa_publickey_deinit(pk);
+        return -1;
+    }
+    pk->mont_ctx = new_mont_domain(RSA_get0_n(pk->rsa));
+    if (pk->mont_ctx == NULL) {
+        brsa_publickey_deinit(pk);
+        return -1;
+    }
     return 0;
 }
 
@@ -166,6 +204,8 @@ brsa_publickey_deinit(BRSAPublicKey *pk)
 {
     RSA_free(pk->rsa);
     pk->rsa = NULL;
+    BN_MONT_CTX_free(pk->mont_ctx);
+    pk->mont_ctx = NULL;
 }
 
 void
@@ -194,18 +234,18 @@ brsa_blind_message_init(BRSABlindMessage *blind_message, size_t modulus_bytes)
 }
 
 void
-brsa_blind_secret_deinit(BRSABlindingSecret *secret)
+brsa_blinding_secret_deinit(BRSABlindingSecret *secret)
 {
     OPENSSL_clear_free(secret->secret, secret->secret_len);
     secret->secret = NULL;
 }
 
 static int
-brsa_blind_secret_init(BRSABlindingSecret *secret, size_t modulus_bytes)
+brsa_blinding_secret_init(BRSABlindingSecret *secret, size_t modulus_bytes)
 {
     secret->secret_len = modulus_bytes;
     if ((secret->secret = OPENSSL_malloc(secret->secret_len)) == NULL) {
-        brsa_blind_secret_deinit(secret);
+        brsa_blinding_secret_deinit(secret);
         return -1;
     }
     return 0;
@@ -290,8 +330,8 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
     if (x == NULL || blind_m == NULL) {
         return -1;
     }
-    if (BN_mod_exp(x, secret_inv, RSA_get0_e(pk->rsa), RSA_get0_n(pk->rsa), bn_ctx) !=
-        ERR_LIB_NONE) {
+    if (BN_mod_exp_mont(x, secret_inv, RSA_get0_e(pk->rsa), RSA_get0_n(pk->rsa), bn_ctx,
+                        pk->mont_ctx) != ERR_LIB_NONE) {
         return -1;
     }
     BN_clear(secret_inv);
@@ -305,7 +345,7 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
     if (brsa_blind_message_init(blind_message, modulus_bytes) != 0) {
         return -1;
     }
-    if (brsa_blind_secret_init(secret_, modulus_bytes) != 0) {
+    if (brsa_blinding_secret_init(secret_, modulus_bytes) != 0) {
         return -1;
     }
     if (BN_bn2bin_padded(blind_message->blind_message, (int) blind_message->blind_message_len,

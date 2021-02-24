@@ -36,7 +36,8 @@ typedef struct BRSASignature {
 
 // An RSA public key
 typedef struct BRSAPublicKey {
-    RSA *rsa;
+    RSA *        rsa;
+    BN_MONT_CTX *mont_ctx;
 } BRSAPublicKey;
 
 // An RSA secret key
@@ -88,7 +89,7 @@ void brsa_serializedkey_deinit(BRSASerializedKey *serialized);
 void brsa_blind_message_deinit(BRSABlindMessage *blind_message);
 
 // Free the internal structures of a secret blinding factor
-void brsa_blind_secret_deinit(BRSABlindingSecret *secret);
+void brsa_blinding_secret_deinit(BRSABlindingSecret *secret);
 
 // Free the internal structures of a blind signature
 void brsa_blind_signature_deinit(BRSABlindSignature *blind_sig);

@@ -2,7 +2,9 @@
 
 Author-blinded RSASSA-PSS RSAE signatures.
 
-## Use case
+This is an implementation of the [RSA Blind Signatures](https://chris-wood.github.io/draft-wood-cfrg-blind-signatures/draft-wood-cfrg-rsa-blind-signatures.html) proposal, based on [the Zig implementation](https://github.com/jedisct1/zig-rsa-blind-signatures).
+
+## Protocol overview
 
 A client asks a server to sign a message. The server receives the message, and returns the signature.
 
@@ -13,12 +15,12 @@ But no one besides the client can link `(message', signature')` to `(message, si
 
 Using that scheme, a server can issue a token and verify that a client has a valid token, without being able to link both actions to the same client.
 
-1. The client create a random message, and blinds it with a random, secret factor.
+1. The client creates a random message, and blinds it with a random, secret factor.
 2. The server receives the blind message, signs it and returns a blind signature.
 3. From the blind signature, and knowing the secret factor, the client can locally compute a `(message, signature)` pair that can be verified using the server's public key.
 4. Anyone, including the server, can thus later verify that `(message, signature)` is valid, without knowing when step 2 occurred.
 
-This scheme was designed by David Chaum, and was originally implemented for anonymizing DigiCash transactions.
+The scheme was designed by David Chaum, and was originally implemented for anonymizing DigiCash transactions.
 
 ## Dependencies
 
@@ -58,7 +60,7 @@ This implementation requires OpenSSL or BoringSSL.
     BRSASignature sig;
     assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
     brsa_blind_signature_deinit(&blind_sig);
-    brsa_blind_secret_deinit(&client_secret);
+    brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
     assert(brsa_verify(&sig, &pk, msg, msg_len) == 0);

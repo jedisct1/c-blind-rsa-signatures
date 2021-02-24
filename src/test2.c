@@ -237,7 +237,7 @@ main(void)
         brsa_signature_deinit(&sig);
         brsa_blind_signature_deinit(&blind_sig);
         brsa_blind_message_deinit(&blind_message);
-        brsa_blind_secret_deinit(&secret);
+        brsa_blinding_secret_deinit(&secret);
     }
 
     // Test validating the blind signature (`blind_sig`) and the secret
