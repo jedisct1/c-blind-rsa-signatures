@@ -36,7 +36,8 @@ typedef struct BRSASignature {
 
 // An RSA public key
 typedef struct BRSAPublicKey {
-    RSA *rsa;
+    RSA *        rsa;
+    BN_MONT_CTX *mont_ctx;
 } BRSAPublicKey;
 
 // An RSA secret key
