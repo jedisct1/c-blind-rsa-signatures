@@ -72,6 +72,9 @@ int brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t de
 int brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk)
     __attribute__((nonnull));
 
+// Recover a public key from a secret key
+int brsa_publickey_recover(BRSAPublicKey *pk, const BRSASecretKey *sk) __attribute__((nonnull));
+
 // Return an identifier for a public key.
 // Up to `id_len` bytes will be stored into `id`.
 int brsa_publickey_id(uint8_t *id, size_t id_len, const BRSAPublicKey *pk) __attribute__((nonnull));
