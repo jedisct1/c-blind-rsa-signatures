@@ -19,6 +19,7 @@
 
 #define MIN_MODULUS_BITS 2048
 #define MAX_MODULUS_BITS 4096
+#define MAX_SERIALIZED_PK_LEN 1000
 
 #define HASH_DIGEST_LENGTH SHA384_DIGEST_LENGTH
 #define HASH_EVP EVP_sha384
@@ -50,6 +51,23 @@ new_mont_domain(const BIGNUM *n)
 }
 
 int
+brsa_publickey_recover(BRSAPublicKey *pk, const BRSASecretKey *sk)
+{
+    pk->mont_ctx = NULL;
+    pk->rsa      = RSAPublicKey_dup(sk->rsa);
+    if (pk->rsa == NULL) {
+        brsa_publickey_deinit(pk);
+        return -1;
+    }
+    pk->mont_ctx = new_mont_domain(RSA_get0_n(pk->rsa));
+    if (pk->mont_ctx == NULL) {
+        brsa_publickey_deinit(pk);
+        return -1;
+    }
+    return 0;
+}
+
+int
 brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
 {
     sk->rsa = RSA_new();
@@ -69,17 +87,7 @@ brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
     BN_free(e);
 
     if (pk != NULL) {
-        pk->mont_ctx = NULL;
-        pk->rsa      = RSAPublicKey_dup(sk->rsa);
-        if (pk->rsa == NULL) {
-            brsa_publickey_deinit(pk);
-            return -1;
-        }
-        pk->mont_ctx = new_mont_domain(RSA_get0_n(pk->rsa));
-        if (pk->mont_ctx == NULL) {
-            brsa_publickey_deinit(pk);
-            return -1;
-        }
+        return brsa_publickey_recover(pk, sk);
     }
     return 0;
 }
@@ -119,13 +127,48 @@ brsa_secretkey_export(BRSASerializedKey *serialized, const BRSASecretKey *sk)
     return 0;
 }
 
+static int
+_rsa_parameters_check(const RSA *rsa)
+{
+    const unsigned int modulus_bits = RSA_bits(rsa);
+
+    if (modulus_bits < MIN_MODULUS_BITS) {
+        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DIGEST_TOO_BIG_FOR_RSA_KEY, __FILE__, __LINE__);
+        return -1;
+    }
+    if (modulus_bits > MAX_MODULUS_BITS) {
+        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_MODULUS_TOO_LARGE, __FILE__, __LINE__);
+        return -1;
+    }
+
+    BIGNUM *e3 = BN_new();
+    if (e3 == NULL) {
+        return -1;
+    }
+    BIGNUM *ef4 = BN_new();
+    if (ef4 == NULL) {
+        BN_free(e3);
+        return -1;
+    }
+    BN_set_word(e3, RSA_3);
+    BN_set_word(ef4, RSA_F4);
+    int ret = -1;
+    if (BN_cmp(RSA_get0_e(rsa), e3) == 0 || BN_cmp(RSA_get0_e(rsa), ef4) == 0) {
+        ret = 0;
+    }
+    BN_free(ef4);
+    BN_free(e3);
+
+    return ret;
+}
+
 int
 brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_len)
 {
     EVP_PKEY *     evp_pkey = NULL;
     const uint8_t *der_     = der;
 
-    if (der_len > LONG_MAX) {
+    if (der_len > MAX_SERIALIZED_PK_LEN) {
         return -1;
     }
     if (d2i_PublicKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
@@ -135,6 +178,10 @@ brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_le
     pk->rsa      = EVP_PKEY_get1_RSA(evp_pkey);
     EVP_PKEY_free(evp_pkey);
     if (pk->rsa == NULL) {
+        brsa_publickey_deinit(pk);
+        return -1;
+    }
+    if (_rsa_parameters_check(pk->rsa) != 0) {
         brsa_publickey_deinit(pk);
         return -1;
     }
@@ -353,22 +400,6 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
         return -1;
     }
     if (BN_bn2bin_padded(secret_->secret, (int) secret_->secret_len, secret) != ERR_LIB_NONE) {
-        return -1;
-    }
-    return 0;
-}
-
-static int
-_rsa_parameters_check(const RSA *rsa)
-{
-    const unsigned int modulus_bits = RSA_bits(rsa);
-
-    if (modulus_bits < MIN_MODULUS_BITS) {
-        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DIGEST_TOO_BIG_FOR_RSA_KEY, __FILE__, __LINE__);
-        return -1;
-    }
-    if (modulus_bits > MAX_MODULUS_BITS) {
-        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_MODULUS_TOO_LARGE, __FILE__, __LINE__);
         return -1;
     }
     return 0;
