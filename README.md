@@ -92,7 +92,7 @@ Some additional helper functions for key management are included:
 
 All these functions return `0` on success and `-1` on error.
 
-## Rewrites in other languages
+## For other languages
 
 * [Zig](https://github.com/jedisct1/zig-blind-rsa-signatures)
 * [Rust](https://github.com/jedisct1/rust-blind-rsa-signatures)
