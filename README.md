@@ -95,5 +95,5 @@ All these functions return `0` on success and `-1` on error.
 ## Rewrites in other languages
 
 * [Zig](https://github.com/jedisct1/zig-blind-rsa-signatures)
-* [Rust](https://github.com/jedisct1/zig-blind-rsa-signatures)
+* [Rust](https://github.com/jedisct1/rust-blind-rsa-signatures)
 
