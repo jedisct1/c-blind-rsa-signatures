@@ -2,7 +2,7 @@
 
 Author-blinded RSASSA-PSS RSAE signatures.
 
-This is an implementation of the [RSA Blind Signatures](https://chris-wood.github.io/draft-wood-cfrg-blind-signatures/draft-wood-cfrg-rsa-blind-signatures.html) proposal, based on [the Zig implementation](https://github.com/jedisct1/zig-rsa-blind-signatures).
+This is an implementation of the [RSA Blind Signatures](https://tools.ietf.org/html/draft-irtf-cfrg-rsa-blind-signatures) proposal, based on [the Zig implementation](https://github.com/jedisct1/zig-rsa-blind-signatures).
 
 ## Protocol overview
 
@@ -91,3 +91,9 @@ Some additional helper functions for key management are included:
 ```
 
 All these functions return `0` on success and `-1` on error.
+
+## For other languages
+
+* [Zig](https://github.com/jedisct1/zig-blind-rsa-signatures)
+* [Rust](https://github.com/jedisct1/rust-blind-rsa-signatures)
+
