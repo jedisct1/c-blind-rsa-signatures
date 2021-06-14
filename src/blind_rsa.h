@@ -38,6 +38,7 @@ typedef struct BRSASignature {
 typedef struct BRSAPublicKey {
     RSA *        rsa;
     BN_MONT_CTX *mont_ctx;
+    int          use_deterministic_padding;
 } BRSAPublicKey;
 
 // An RSA secret key
@@ -130,6 +131,10 @@ int brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 // `pk`. The function returns `0` if the signature if valid, and `-1` on error.
 int brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
     __attribute__((nonnull)) __attribute__((warn_unused_result));
+
+// Use deterministic padding (not recommended for most applications).
+void brsa_use_deterministic_padding(BRSAPublicKey *pk, int deterministic_padding)
+    __attribute__((nonnull));
 
 #ifdef __cplusplus
 }

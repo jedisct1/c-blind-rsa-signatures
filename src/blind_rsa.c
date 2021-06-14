@@ -64,6 +64,8 @@ brsa_publickey_recover(BRSAPublicKey *pk, const BRSASecretKey *sk)
         brsa_publickey_deinit(pk);
         return -1;
     }
+    pk->use_deterministic_padding = 0;
+
     return 0;
 }
 
@@ -190,6 +192,8 @@ brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_le
         brsa_publickey_deinit(pk);
         return -1;
     }
+    pk->use_deterministic_padding = 0;
+
     return 0;
 }
 
@@ -430,8 +434,8 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
     }
 
     const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_padding_add_PKCS1_PSS_mgf1(pk->rsa, padded, msg_hash, evp_md, evp_md, -1) !=
-        ERR_LIB_NONE) {
+    if (RSA_padding_add_PKCS1_PSS_mgf1(pk->rsa, padded, msg_hash, evp_md, evp_md,
+                                       pk->use_deterministic_padding ? 0 : -1) != ERR_LIB_NONE) {
         return -1;
     }
     OPENSSL_cleanse(msg_hash, HASH_DIGEST_LENGTH);
@@ -513,7 +517,8 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
     }
 
     const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, -1) != ERR_LIB_NONE) {
+    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em,
+                                  pk->use_deterministic_padding ? 0 : -1) != ERR_LIB_NONE) {
         OPENSSL_free(em);
         return -1;
     }
@@ -589,4 +594,10 @@ int
 brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
 {
     return rsassa_pss_verify(sig, pk, msg, msg_len);
+}
+
+void
+brsa_use_deterministic_padding(BRSAPublicKey *pk, int deterministic_padding)
+{
+    pk->use_deterministic_padding = !!deterministic_padding;
 }
