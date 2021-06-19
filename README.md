@@ -92,6 +92,9 @@ Some additional helper functions for key management are included:
     assert(brsa_publickey_import(&pk, pk_der.bytes, pk_der.bytes_len) == 0);
     brsa_serializedkey_deinit(&sk_der);
     brsa_serializedkey_deinit(&pk_der);
+
+    // Use a custom salt length
+    brsa_override_salt_length(&options, 64);
 ```
 
 All these functions return `0` on success and `-1` on error.

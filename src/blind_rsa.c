@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef OPENSSL_API_COMPAT
+#define OPENSSL_API_COMPAT 10100
+#endif
+
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
@@ -23,8 +27,6 @@
 
 #define MAX_HASH_DIGEST_LENGTH EVP_MAX_MD_SIZE
 
-#define DEFAULT_SALT_LENGTH 48
-
 int
 brsa_options_init(BRSAOptions *options, BRSAHashFunction hash_function,
                   BRSADeterministicPadding deterministic)
@@ -42,8 +44,19 @@ brsa_options_init(BRSAOptions *options, BRSAHashFunction hash_function,
         evp_md = EVP_sha512();
         break;
     }
-    options->salt_len = deterministic == BRSA_DETERMINISTIC ? 0 : DEFAULT_SALT_LENGTH;
+    options->salt_len = deterministic == BRSA_DETERMINISTIC ? 0 : EVP_MD_size(evp_md);
     options->evp_md   = evp_md;
+
+    return 0;
+}
+
+int
+brsa_override_salt_len(BRSAOptions *options, size_t salt_len)
+{
+    if (options->salt_len == 0 && salt_len > 0) {
+        return -1;
+    }
+    options->salt_len = salt_len;
 
     return 0;
 }
@@ -126,7 +139,9 @@ brsa_secretkey_import(BRSASecretKey *sk, const uint8_t *der, const size_t der_le
     }
     sk->rsa = EVP_PKEY_get1_RSA(evp_pkey);
     EVP_PKEY_free(evp_pkey);
-
+    if (sk->rsa == NULL) {
+        return -1;
+    }
     return 0;
 }
 

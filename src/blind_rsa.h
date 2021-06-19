@@ -74,7 +74,7 @@ typedef struct BRSASerializedKey {
 
 // Initialize options
 int brsa_options_init(BRSAOptions *options, BRSAHashFunction hash_function,
-                      BRSADeterministicPadding deterministic);
+                      BRSADeterministicPadding deterministic) __attribute__((nonnull));
 
 // Generate a new key pair, and put the key pair into `sk` and a key with the public information
 // only into `pk`
@@ -158,9 +158,10 @@ int brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg,
                 const BRSAOptions *options) __attribute__((nonnull))
 __attribute__((warn_unused_result));
 
-// Use deterministic padding (not recommended for most applications).
-void brsa_use_deterministic_padding(BRSAPublicKey *pk, int deterministic_padding)
-    __attribute__((nonnull));
+// Use a custom the salt length. Not recommended.
+// Returns `-1` is padding is meant to be deterministic.
+int brsa_override_salt_len(BRSAOptions *options, size_t salt_len)
+    __attribute__((warn_unused_result));
 
 #ifdef __cplusplus
 }
