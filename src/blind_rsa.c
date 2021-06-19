@@ -27,9 +27,20 @@
 
 #define MAX_HASH_DIGEST_LENGTH EVP_MAX_MD_SIZE
 
+void
+brsa_context_init_default(BRSAContext *context)
+{
+    brsa_context_init_custom(context, BRSA_SHA384, BRSA_DEFAULT_SALT_LENGTH);
+}
+
+void
+brsa_context_init_deterministic(BRSAContext *context)
+{
+    brsa_context_init_custom(context, BRSA_SHA384, 0);
+}
+
 int
-brsa_options_init(BRSAOptions *options, BRSAHashFunction hash_function,
-                  BRSADeterministicPadding deterministic)
+brsa_context_init_custom(BRSAContext *context, BRSAHashFunction hash_function, size_t salt_len)
 {
     const EVP_MD *evp_md;
 
@@ -44,20 +55,12 @@ brsa_options_init(BRSAOptions *options, BRSAHashFunction hash_function,
         evp_md = EVP_sha512();
         break;
     }
-    options->salt_len = deterministic == BRSA_DETERMINISTIC ? 0 : EVP_MD_size(evp_md);
-    options->evp_md   = evp_md;
-
-    return 0;
-}
-
-int
-brsa_override_salt_len(BRSAOptions *options, size_t salt_len)
-{
-    if (options->salt_len == 0 && salt_len > 0) {
-        return -1;
+    context->evp_md = evp_md;
+    if (salt_len == BRSA_DEFAULT_SALT_LENGTH) {
+        context->salt_len = (size_t) EVP_MD_size(evp_md);
+    } else {
+        context->salt_len = salt_len;
     }
-    options->salt_len = salt_len;
-
     return 0;
 }
 
@@ -451,8 +454,8 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
 }
 
 int
-brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPublicKey *pk,
-           const uint8_t *msg, size_t msg_len, const BRSAOptions *options)
+brsa_blind(const BRSAContext *context, BRSABlindMessage *blind_message, BRSABlindingSecret *secret,
+           BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
 {
     if (_rsa_parameters_check(pk->rsa) != 0) {
         return -1;
@@ -462,7 +465,7 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
     // Compute H(msg)
 
     uint8_t msg_hash[MAX_HASH_DIGEST_LENGTH];
-    if (_hash(options->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
+    if (_hash(context->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
         return -1;
     }
 
@@ -474,9 +477,9 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
         return -1;
     }
 
-    const EVP_MD *evp_md = options->evp_md;
+    const EVP_MD *evp_md = context->evp_md;
     if (RSA_padding_add_PKCS1_PSS_mgf1(pk->rsa, padded, msg_hash, evp_md, evp_md,
-                                       options->salt_len) != ERR_LIB_NONE) {
+                                       context->salt_len) != ERR_LIB_NONE) {
         return -1;
     }
     OPENSSL_cleanse(msg_hash, sizeof msg_hash);
@@ -499,20 +502,22 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
 }
 
 int
-brsa_blind_message_generate(BRSABlindMessage *blind_message, uint8_t *msg, size_t msg_len,
-                            BRSABlindingSecret *secret, BRSAPublicKey *pk,
-                            const BRSAOptions *options)
+brsa_blind_message_generate(const BRSAContext *context, BRSABlindMessage *blind_message,
+                            uint8_t *msg, size_t msg_len, BRSABlindingSecret *secret,
+                            BRSAPublicKey *pk)
 {
     if (RAND_bytes(msg, msg_len) != ERR_LIB_NONE) {
         return -1;
     }
-    return brsa_blind(blind_message, secret, pk, msg, msg_len, options);
+    return brsa_blind(context, blind_message, secret, pk, msg, msg_len);
 }
 
 int
-brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
+brsa_blind_sign(const BRSAContext *context, BRSABlindSignature *blind_sig, BRSASecretKey *sk,
                 const BRSABlindMessage *blind_message)
 {
+    (void) context;
+
     if (_rsa_parameters_check(sk->rsa) != 0) {
         return -1;
     }
@@ -533,8 +538,8 @@ brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
 }
 
 static int
-rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg,
-                  const size_t msg_len, const BRSAOptions *options)
+rsassa_pss_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey *pk,
+                  const uint8_t *msg, const size_t msg_len)
 {
     const size_t modulus_bytes = RSA_size(pk->rsa);
     if (sig->sig_len != modulus_bytes) {
@@ -543,7 +548,7 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
     }
 
     uint8_t msg_hash[MAX_HASH_DIGEST_LENGTH];
-    if (_hash(options->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
+    if (_hash(context->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
         return -1;
     }
 
@@ -558,8 +563,8 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
         return -1;
     }
 
-    const EVP_MD *evp_md = options->evp_md;
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, options->salt_len) !=
+    const EVP_MD *evp_md = context->evp_md;
+    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, context->salt_len) !=
         ERR_LIB_NONE) {
         OPENSSL_free(em);
         return -1;
@@ -569,9 +574,9 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
 }
 
 static int
-_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
+_finalize(const BRSAContext *context, BRSASignature *sig, const BRSABlindSignature *blind_sig,
           const BRSABlindingSecret *secret_, BRSAPublicKey *pk, BN_CTX *bn_ctx, const uint8_t *msg,
-          size_t msg_len, const BRSAOptions *options)
+          size_t msg_len)
 {
     BIGNUM *secret  = BN_CTX_get(bn_ctx);
     BIGNUM *blind_z = BN_CTX_get(bn_ctx);
@@ -597,7 +602,7 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
         brsa_signature_deinit(sig);
         return -1;
     }
-    if (rsassa_pss_verify(sig, pk, msg, msg_len, options) != 0) {
+    if (rsassa_pss_verify(context, sig, pk, msg, msg_len) != 0) {
         brsa_signature_deinit(sig);
         return -1;
     }
@@ -605,9 +610,9 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 }
 
 int
-brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
+brsa_finalize(const BRSAContext *context, BRSASignature *sig, const BRSABlindSignature *blind_sig,
               const BRSABlindingSecret *secret, BRSAPublicKey *pk, const uint8_t *msg,
-              size_t msg_len, const BRSAOptions *options)
+              size_t msg_len)
 {
     if (_rsa_parameters_check(pk->rsa) != 0) {
         return -1;
@@ -624,7 +629,7 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret = _finalize(sig, blind_sig, secret, pk, bn_ctx, msg, msg_len, options);
+    const int ret = _finalize(context, sig, blind_sig, secret, pk, bn_ctx, msg, msg_len);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
@@ -633,8 +638,8 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 }
 
 int
-brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len,
-            const BRSAOptions *options)
+brsa_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey *pk,
+            const uint8_t *msg, size_t msg_len)
 {
-    return rsassa_pss_verify(sig, pk, msg, msg_len, options);
+    return rsassa_pss_verify(context, sig, pk, msg, msg_len);
 }

@@ -31,9 +31,9 @@ This implementation requires OpenSSL or BoringSSL.
 ```c
     #include <blind_rsa.h>
 
-    // Options
-    BRSAOptions options;
-    brsa_options_init(&options, BRSA_SHA256, BRSA_NON_DETERMINISTIC);
+    // Initialize a context
+    BRSAContext context;
+    brsa_context_init_default(&context);
 
     // [SERVER]: Generate a RSA-2048 key pair
     BRSASecretKey sk;
@@ -51,7 +51,7 @@ This implementation requires OpenSSL or BoringSSL.
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
     // THe client secret should not be sent to the server.
     BRSABlindSignature blind_sig;
-    assert(brsa_blind_sign(&blind_sig, &sk, &blind_msg, &options) == 0);
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
     brsa_blind_message_deinit(&blind_msg);
 
     // [CLIENT]: later, when the client wants to redeem a signed blind message,
@@ -62,14 +62,24 @@ This implementation requires OpenSSL or BoringSSL.
     // Note that the finalization function also verifies that the new signature
     // is correct for the server public key.
     BRSASignature sig;
-    assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len, &options) == 0);
+    assert(brsa_finalize(&context, &sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
     brsa_blind_signature_deinit(&blind_sig);
     brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
-    assert(brsa_verify(&sig, &pk, msg, msg_len, &options) == 0);
+    assert(brsa_verify(&context, &sig, &pk, msg, msg_len) == 0);
     brsa_signature_deinit(&sig);
 ```
+
+Deterministic padding is also supported, by creating a context with `brsa_context_init_deterministic()`:
+
+```c
+    // Initialize a context to use deterministic padding
+    BRSAContext context;
+    brsa_context_init_deterministic(&context);
+```
+
+Most applications should use the default (probabilistic) mode instead.
 
 Some additional helper functions for key management are included:
 
@@ -92,9 +102,6 @@ Some additional helper functions for key management are included:
     assert(brsa_publickey_import(&pk, pk_der.bytes, pk_der.bytes_len) == 0);
     brsa_serializedkey_deinit(&sk_der);
     brsa_serializedkey_deinit(&pk_der);
-
-    // Use a custom salt length
-    brsa_override_salt_length(&options, 64);
 ```
 
 All these functions return `0` on success and `-1` on error.

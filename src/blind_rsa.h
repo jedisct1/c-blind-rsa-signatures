@@ -11,6 +11,8 @@ extern "C" {
 #include <openssl/evp.h>
 #include <openssl/rsa.h>
 
+#define BRSA_DEFAULT_SALT_LENGTH ((size_t) -1)
+
 // Hash functions
 typedef enum BRSAHashFunction {
     BRSA_SHA256,
@@ -18,17 +20,11 @@ typedef enum BRSAHashFunction {
     BRSA_SHA512,
 } BRSAHashFunction;
 
-// Deterministic/non-deterministic padding
-typedef enum BRSADeterministicPadding {
-    BRSA_DETERMINISTIC,
-    BRSA_NON_DETERMINISTIC
-} BRSADeterministicPadding;
-
-// Options
-typedef struct BRSAOptions {
+// Context
+typedef struct BRSAContext {
     const EVP_MD *evp_md;
     size_t        salt_len;
-} BRSAOptions;
+} BRSAContext;
 
 // Blind message to be signed
 typedef struct BRSABlindMessage {
@@ -72,9 +68,16 @@ typedef struct BRSASerializedKey {
     size_t   bytes_len;
 } BRSASerializedKey;
 
-// Initialize options
-int brsa_options_init(BRSAOptions *options, BRSAHashFunction hash_function,
-                      BRSADeterministicPadding deterministic) __attribute__((nonnull));
+// Initialize a standard context for probabilistic padding (recommended for most applications)
+void brsa_context_init_default(BRSAContext *context) __attribute__((nonnull));
+
+// Initialize a context for deterministic padding
+void brsa_context_init_deterministic(BRSAContext *context) __attribute__((nonnull));
+
+// Initialize a context with custom parameters.
+// The salt length can be set to BRSA_DEFAULT_SALT_LENGTH to match the hash function output size
+int brsa_context_init_custom(BRSAContext *context, BRSAHashFunction hash_function, size_t salt_len)
+    __attribute__((nonnull));
 
 // Generate a new key pair, and put the key pair into `sk` and a key with the public information
 // only into `pk`
@@ -128,40 +131,35 @@ void brsa_signature_deinit(BRSASignature *blind_sig);
 // Generate a random message of length `msg_len`, blind it using the public
 // key `pk` and put the serialized blind message into `blind_message`, as well as
 // the secret blinding factor into `secret`
-int brsa_blind_message_generate(BRSABlindMessage *blind_message, uint8_t *msg, size_t msg_len,
-                                BRSABlindingSecret *secret, BRSAPublicKey *pk,
-                                const BRSAOptions *options) __attribute__((nonnull));
+int brsa_blind_message_generate(const BRSAContext *context, BRSABlindMessage *blind_message,
+                                uint8_t *msg, size_t msg_len, BRSABlindingSecret *secret,
+                                BRSAPublicKey *pk) __attribute__((nonnull));
 
 // Blind a message `msg` of length `msg_len` bytes, using the public RSA key
 // `pk`, and put the serialized blind message into `blind_message`, as well as
 // the secret blinding factor into `secret`
-int brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPublicKey *pk,
-               const uint8_t *msg, size_t msg_len, const BRSAOptions *options)
+int brsa_blind(const BRSAContext *context, BRSABlindMessage *blind_message,
+               BRSABlindingSecret *secret, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
     __attribute__((nonnull));
 
 // Compute a signature for a blind message `blind_message` of
 // length `blind_message_len` bytes using a key pair `sk`, and put the
 // serialized signature into `blind_sig`
-int brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
+int brsa_blind_sign(const BRSAContext *context, BRSABlindSignature *blind_sig, BRSASecretKey *sk,
                     const BRSABlindMessage *blind_message) __attribute__((nonnull));
 
 // Compute a signature for a message `msg` given the signature `blind(msg, secret)`.
 // The signature of `msg` is put into `sig`. Note that before returning, the function
 // automatically verifies that the new signature is valid for the given public key.
-int brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
-                  const BRSABlindingSecret *secret_, BRSAPublicKey *pk, const uint8_t *msg,
-                  size_t msg_len, const BRSAOptions *options) __attribute__((nonnull));
+int brsa_finalize(const BRSAContext *context, BRSASignature *sig,
+                  const BRSABlindSignature *blind_sig, const BRSABlindingSecret *secret_,
+                  BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len) __attribute__((nonnull));
 
 // Verify a non-blind signature `sig` for a message `msg` of length `msg_len` using the public key
 // `pk`. The function returns `0` if the signature if valid, and `-1` on error.
-int brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len,
-                const BRSAOptions *options) __attribute__((nonnull))
+int brsa_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey *pk,
+                const uint8_t *msg, size_t msg_len) __attribute__((nonnull))
 __attribute__((warn_unused_result));
-
-// Use a custom the salt length. Not recommended.
-// Returns `-1` is padding is meant to be deterministic.
-int brsa_override_salt_len(BRSAOptions *options, size_t salt_len)
-    __attribute__((warn_unused_result));
 
 #ifdef __cplusplus
 }
