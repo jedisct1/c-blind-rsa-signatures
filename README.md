@@ -31,6 +31,10 @@ This implementation requires OpenSSL or BoringSSL.
 ```c
     #include <blind_rsa.h>
 
+    // Options
+    BRSAOptions options;
+    brsa_options_init(&options, BRSA_SHA256, BRSA_NON_DETERMINISTIC);
+
     // [SERVER]: Generate a RSA-2048 key pair
     BRSASecretKey sk;
     BRSAPublicKey pk;
@@ -47,7 +51,7 @@ This implementation requires OpenSSL or BoringSSL.
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
     // THe client secret should not be sent to the server.
     BRSABlindSignature blind_sig;
-    assert(brsa_blind_sign(&blind_sig, &sk, &blind_msg) == 0);
+    assert(brsa_blind_sign(&blind_sig, &sk, &blind_msg, &options) == 0);
     brsa_blind_message_deinit(&blind_msg);
 
     // [CLIENT]: later, when the client wants to redeem a signed blind message,
@@ -58,12 +62,12 @@ This implementation requires OpenSSL or BoringSSL.
     // Note that the finalization function also verifies that the new signature
     // is correct for the server public key.
     BRSASignature sig;
-    assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
+    assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len, &options) == 0);
     brsa_blind_signature_deinit(&blind_sig);
     brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
-    assert(brsa_verify(&sig, &pk, msg, msg_len) == 0);
+    assert(brsa_verify(&sig, &pk, msg, msg_len, &options) == 0);
     brsa_signature_deinit(&sig);
 ```
 

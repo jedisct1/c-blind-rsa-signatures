@@ -21,12 +21,32 @@
 #define MAX_MODULUS_BITS 4096
 #define MAX_SERIALIZED_PK_LEN 1000
 
-#define HASH_DIGEST_LENGTH SHA384_DIGEST_LENGTH
-#define HASH_EVP EVP_sha384
-#define HASH_CTX SHA512_CTX
-#define HASH_Init SHA384_Init
-#define HASH_Update SHA384_Update
-#define HASH_Final SHA384_Final
+#define MAX_HASH_DIGEST_LENGTH EVP_MAX_MD_SIZE
+
+#define DEFAULT_SALT_LENGTH 48
+
+int
+brsa_options_init(BRSAOptions *options, BRSAHashFunction hash_function,
+                  BRSADeterministicPadding deterministic)
+{
+    const EVP_MD *evp_md;
+
+    switch (hash_function) {
+    case BRSA_SHA256:
+        evp_md = EVP_sha256();
+        break;
+    case BRSA_SHA384:
+        evp_md = EVP_sha384();
+        break;
+    case BRSA_SHA512:
+        evp_md = EVP_sha512();
+        break;
+    }
+    options->salt_len = deterministic == BRSA_DETERMINISTIC ? 0 : DEFAULT_SALT_LENGTH;
+    options->evp_md   = evp_md;
+
+    return 0;
+}
 
 static BN_MONT_CTX *
 new_mont_domain(const BIGNUM *n)
@@ -64,8 +84,6 @@ brsa_publickey_recover(BRSAPublicKey *pk, const BRSASecretKey *sk)
         brsa_publickey_deinit(pk);
         return -1;
     }
-    pk->use_deterministic_padding = 0;
-
     return 0;
 }
 
@@ -192,8 +210,6 @@ brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_le
         brsa_publickey_deinit(pk);
         return -1;
     }
-    pk->use_deterministic_padding = 0;
-
     return 0;
 }
 
@@ -339,16 +355,26 @@ brsa_signature_init(BRSASignature *sig, size_t sig_len)
 }
 
 static int
-_hash(uint8_t msg_hash[HASH_DIGEST_LENGTH], const uint8_t *msg, const size_t msg_len)
+_hash(const EVP_MD *evp_md, uint8_t *msg_hash, const size_t msg_hash_len, const uint8_t *msg,
+      const size_t msg_len)
 {
-    HASH_CTX hash_ctx;
-    if (HASH_Init(&hash_ctx) != ERR_LIB_NONE ||
-        HASH_Update(&hash_ctx, msg, msg_len) != ERR_LIB_NONE ||
-        HASH_Final(msg_hash, &hash_ctx) != ERR_LIB_NONE) {
+    EVP_MD_CTX *hash_ctx;
+
+    if (msg_hash_len < EVP_MD_size(evp_md)) {
         return -1;
     }
-    OPENSSL_cleanse(&hash_ctx, sizeof hash_ctx);
-    return 0;
+    if ((hash_ctx = EVP_MD_CTX_new()) == NULL) {
+        return -1;
+    }
+    int ret = -1;
+    if (EVP_DigestInit(hash_ctx, evp_md) == ERR_LIB_NONE &&
+        EVP_DigestUpdate(hash_ctx, msg, msg_len) == ERR_LIB_NONE &&
+        EVP_DigestFinal_ex(hash_ctx, msg_hash, NULL) == ERR_LIB_NONE) {
+        ret = 0;
+    }
+    EVP_MD_CTX_free(hash_ctx);
+
+    return ret;
 }
 
 static int
@@ -411,7 +437,7 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
 
 int
 brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPublicKey *pk,
-           const uint8_t *msg, size_t msg_len)
+           const uint8_t *msg, size_t msg_len, const BRSAOptions *options)
 {
     if (_rsa_parameters_check(pk->rsa) != 0) {
         return -1;
@@ -420,8 +446,8 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
 
     // Compute H(msg)
 
-    uint8_t msg_hash[HASH_DIGEST_LENGTH];
-    if (_hash(msg_hash, msg, msg_len) != 0) {
+    uint8_t msg_hash[MAX_HASH_DIGEST_LENGTH];
+    if (_hash(options->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
         return -1;
     }
 
@@ -433,12 +459,12 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
         return -1;
     }
 
-    const EVP_MD *evp_md = HASH_EVP();
+    const EVP_MD *evp_md = options->evp_md;
     if (RSA_padding_add_PKCS1_PSS_mgf1(pk->rsa, padded, msg_hash, evp_md, evp_md,
-                                       pk->use_deterministic_padding ? 0 : -1) != ERR_LIB_NONE) {
+                                       options->salt_len) != ERR_LIB_NONE) {
         return -1;
     }
-    OPENSSL_cleanse(msg_hash, HASH_DIGEST_LENGTH);
+    OPENSSL_cleanse(msg_hash, sizeof msg_hash);
 
     // Blind the padded message
 
@@ -459,12 +485,13 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
 
 int
 brsa_blind_message_generate(BRSABlindMessage *blind_message, uint8_t *msg, size_t msg_len,
-                            BRSABlindingSecret *secret, BRSAPublicKey *pk)
+                            BRSABlindingSecret *secret, BRSAPublicKey *pk,
+                            const BRSAOptions *options)
 {
     if (RAND_bytes(msg, msg_len) != ERR_LIB_NONE) {
         return -1;
     }
-    return brsa_blind(blind_message, secret, pk, msg, msg_len);
+    return brsa_blind(blind_message, secret, pk, msg, msg_len, options);
 }
 
 int
@@ -492,7 +519,7 @@ brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
 
 static int
 rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg,
-                  const size_t msg_len)
+                  const size_t msg_len, const BRSAOptions *options)
 {
     const size_t modulus_bytes = RSA_size(pk->rsa);
     if (sig->sig_len != modulus_bytes) {
@@ -500,8 +527,8 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
         return -1;
     }
 
-    uint8_t msg_hash[HASH_DIGEST_LENGTH];
-    if (_hash(msg_hash, msg, msg_len) != 0) {
+    uint8_t msg_hash[MAX_HASH_DIGEST_LENGTH];
+    if (_hash(options->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
         return -1;
     }
 
@@ -516,9 +543,9 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
         return -1;
     }
 
-    const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em,
-                                  pk->use_deterministic_padding ? 0 : -1) != ERR_LIB_NONE) {
+    const EVP_MD *evp_md = options->evp_md;
+    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em, options->salt_len) !=
+        ERR_LIB_NONE) {
         OPENSSL_free(em);
         return -1;
     }
@@ -529,7 +556,7 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
 static int
 _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
           const BRSABlindingSecret *secret_, BRSAPublicKey *pk, BN_CTX *bn_ctx, const uint8_t *msg,
-          size_t msg_len)
+          size_t msg_len, const BRSAOptions *options)
 {
     BIGNUM *secret  = BN_CTX_get(bn_ctx);
     BIGNUM *blind_z = BN_CTX_get(bn_ctx);
@@ -555,7 +582,7 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
         brsa_signature_deinit(sig);
         return -1;
     }
-    if (rsassa_pss_verify(sig, pk, msg, msg_len) != 0) {
+    if (rsassa_pss_verify(sig, pk, msg, msg_len, options) != 0) {
         brsa_signature_deinit(sig);
         return -1;
     }
@@ -565,7 +592,7 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 int
 brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
               const BRSABlindingSecret *secret, BRSAPublicKey *pk, const uint8_t *msg,
-              size_t msg_len)
+              size_t msg_len, const BRSAOptions *options)
 {
     if (_rsa_parameters_check(pk->rsa) != 0) {
         return -1;
@@ -582,7 +609,7 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret = _finalize(sig, blind_sig, secret, pk, bn_ctx, msg, msg_len);
+    const int ret = _finalize(sig, blind_sig, secret, pk, bn_ctx, msg, msg_len, options);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
@@ -591,13 +618,8 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 }
 
 int
-brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
+brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len,
+            const BRSAOptions *options)
 {
-    return rsassa_pss_verify(sig, pk, msg, msg_len);
-}
-
-void
-brsa_use_deterministic_padding(BRSAPublicKey *pk, int deterministic_padding)
-{
-    pk->use_deterministic_padding = !!deterministic_padding;
+    return rsassa_pss_verify(sig, pk, msg, msg_len, options);
 }

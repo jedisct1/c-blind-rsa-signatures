@@ -13,6 +13,10 @@
 int
 main(void)
 {
+    // Options
+    BRSAOptions options;
+    brsa_options_init(&options, BRSA_SHA256, BRSA_NON_DETERMINISTIC);
+
     // [SERVER]: Generate a RSA-2048 key pair
     BRSASecretKey sk;
     BRSAPublicKey pk;
@@ -24,7 +28,8 @@ main(void)
     const size_t       msg_len = sizeof msg;
     BRSABlindMessage   blind_msg;
     BRSABlindingSecret client_secret;
-    assert(brsa_blind_message_generate(&blind_msg, msg, msg_len, &client_secret, &pk) == 0);
+    assert(brsa_blind_message_generate(&blind_msg, msg, msg_len, &client_secret, &pk, &options) ==
+           0);
 
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
     // THe client secret should not be sent to the server.
@@ -40,12 +45,12 @@ main(void)
     // Note that the finalization function also verifies that the signature is
     // correct for the server public key.
     BRSASignature sig;
-    assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
+    assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len, &options) == 0);
     brsa_blind_signature_deinit(&blind_sig);
     brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
-    assert(brsa_verify(&sig, &pk, msg, msg_len) == 0);
+    assert(brsa_verify(&sig, &pk, msg, msg_len, &options) == 0);
     brsa_signature_deinit(&sig);
 
     // Get a key identifier
