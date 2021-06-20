@@ -162,6 +162,15 @@ hex_decode(uint8_t **const buf, size_t *const buf_len, const char *hex)
     return 0;
 }
 
+static EVP_PKEY *
+rsa_pkey(const RSA *rsa)
+{
+    EVP_PKEY *evp_pkey = EVP_PKEY_new();
+    assert(evp_pkey != NULL);
+    EVP_PKEY_assign_RSA(evp_pkey, rsa);
+    return evp_pkey;
+}
+
 int
 main(void)
 {
@@ -190,7 +199,7 @@ main(void)
         r = RSA_set0_key(rsa_priv, n, e, d);
         assert(r == ERR_LIB_NONE);
     }
-    BRSASecretKey sk = { .rsa = rsa_priv };
+    BRSASecretKey sk = { .evp_pkey = rsa_pkey(rsa_priv) };
 
     // An RSA object without the private exponent `d`.  This is the public key.
     RSA *rsa_pub = RSA_new();
@@ -207,12 +216,16 @@ main(void)
         r = RSA_set0_key(rsa_pub, n, e, NULL);
         assert(r == ERR_LIB_NONE);
     }
-    BRSAPublicKey pk = { .rsa = rsa_pub };
+    BRSAPublicKey pk = { .evp_pkey = rsa_pkey(rsa_pub) };
 
     uint8_t *msg;
     size_t   msg_len;
     r = hex_decode(&msg, &msg_len, TV_msg);
     assert(r == 0);
+
+    // Initialize a context
+    BRSAContext context;
+    brsa_context_init_default(&context);
 
     {
         // Blind the message - Returns the blinded message as well as a secret
@@ -220,18 +233,18 @@ main(void)
         // verification.
         BRSABlindMessage   blind_message;
         BRSABlindingSecret secret;
-        r = brsa_blind(&blind_message, &secret, &pk, msg, msg_len);
+        r = brsa_blind(&context, &blind_message, &secret, &pk, msg, msg_len);
         assert(r == 0);
 
         // Compute a signature for the blind message.
         BRSABlindSignature blind_sig;
-        r = brsa_blind_sign(&blind_sig, &sk, &blind_message);
+        r = brsa_blind_sign(&context, &blind_sig, &sk, &blind_message);
         assert(r == 0);
 
         BRSASignature sig;
 
         // Verify the signature using the original message and secret.
-        r = brsa_finalize(&sig, &blind_sig, &secret, &pk, msg, msg_len);
+        r = brsa_finalize(&context, &sig, &blind_sig, &secret, &pk, msg, msg_len);
         assert(r == 0);
 
         brsa_signature_deinit(&sig);
@@ -252,7 +265,7 @@ main(void)
         assert(r == 0);
 
         BRSASignature sig;
-        r = brsa_finalize(&sig, &blind_sig, &secret, &pk, msg, msg_len);
+        r = brsa_finalize(&context, &sig, &blind_sig, &secret, &pk, msg, msg_len);
         assert(r == 0);
 
         BRSASignature expected_sig;
@@ -262,7 +275,7 @@ main(void)
         assert(sig.sig_len == expected_sig.sig_len);
         assert(memcmp(sig.sig, expected_sig.sig, sig.sig_len) == 0);
 
-        r = brsa_verify(&sig, &pk, msg, msg_len);
+        r = brsa_verify(&context, &sig, &pk, msg, msg_len);
         assert(r == 0);
 
         brsa_signature_deinit(&expected_sig);
@@ -280,7 +293,7 @@ main(void)
         assert(r == 0);
 
         BRSABlindSignature blind_sig;
-        r = brsa_blind_sign(&blind_sig, &sk, &blind_message);
+        r = brsa_blind_sign(&context, &blind_sig, &sk, &blind_message);
         assert(r == 0);
 
         BRSABlindSignature expected_blind_sig;
