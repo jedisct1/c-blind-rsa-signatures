@@ -32,7 +32,7 @@ test_default(void)
            0);
 
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
-    // THe client secret should not be sent to the server.
+    // The client secret should not be sent to the server.
     BRSABlindSignature blind_sig;
     assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
     brsa_blind_message_deinit(&blind_msg);
@@ -98,7 +98,7 @@ test_deterministic(void)
            0);
 
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
-    // THe client secret should not be sent to the server.
+    // The client secret should not be sent to the server.
     BRSABlindSignature blind_sig;
     assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
 

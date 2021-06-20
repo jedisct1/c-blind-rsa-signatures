@@ -49,7 +49,7 @@ This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
     assert(brsa_blind_message_generate(&blind_msg, msg, msg_len, &client_secret, &pk) == 0);
 
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
-    // THe client secret should not be sent to the server.
+    // The client secret should not be sent to the server.
     BRSABlindSignature blind_sig;
     assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
     brsa_blind_message_deinit(&blind_msg);
