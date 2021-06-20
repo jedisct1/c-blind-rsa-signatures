@@ -52,13 +52,13 @@ typedef struct BRSASignature {
 
 // An RSA public key
 typedef struct BRSAPublicKey {
-    RSA *        rsa;
+    EVP_PKEY *   evp_pkey;
     BN_MONT_CTX *mont_ctx;
 } BRSAPublicKey;
 
 // An RSA secret key
 typedef struct BRSASecretKey {
-    RSA *rsa;
+    EVP_PKEY *evp_pkey;
 } BRSASecretKey;
 
 // A serialized representation of a key
