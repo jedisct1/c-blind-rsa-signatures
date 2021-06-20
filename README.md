@@ -31,7 +31,7 @@ This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
 ```c
     #include <blind_rsa.h>
 
-    // Initialize a context
+    // Initialize a context with the default parameters
     BRSAContext context;
     brsa_context_init_default(&context);
 
