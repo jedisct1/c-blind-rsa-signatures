@@ -81,6 +81,15 @@ Deterministic padding is also supported, by creating a context with `brsa_contex
 
 Most applications should use the default (probabilistic) mode instead.
 
+A custom hash function and salt length can also be specified with `brsa_context_init_custom()`:
+
+```c
+    // Initialize a context with SHA-256 as a Hash and MGF function,
+    // and a 48 byte salt.
+    BRSAContext context;
+    brsa_context_init_custom(&context, BRSA_SHA256, 48);
+```
+
 Some additional helper functions for key management are included:
 
 ```c
