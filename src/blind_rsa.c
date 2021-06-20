@@ -98,6 +98,8 @@ brsa_context_init_custom(BRSAContext *context, BRSAHashFunction hash_function, s
     case BRSA_SHA512:
         evp_md = EVP_sha512();
         break;
+    default:
+        return -1;
     }
     context->evp_md = evp_md;
     if (salt_len == BRSA_DEFAULT_SALT_LENGTH) {
