@@ -9,7 +9,6 @@ extern "C" {
 
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
-#include <openssl/rsa.h>
 
 #define BRSA_DEFAULT_SALT_LENGTH ((size_t) -1)
 
