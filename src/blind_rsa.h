@@ -54,7 +54,6 @@ typedef struct BRSASignature {
 typedef struct BRSAPublicKey {
     RSA *        rsa;
     BN_MONT_CTX *mont_ctx;
-    int          use_deterministic_padding;
 } BRSAPublicKey;
 
 // An RSA secret key
