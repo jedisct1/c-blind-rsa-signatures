@@ -24,7 +24,7 @@ The scheme was designed by David Chaum, and was originally implemented for anony
 
 ## Dependencies
 
-This implementation requires OpenSSL or BoringSSL.
+This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
 
 ## Usage
 
