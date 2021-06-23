@@ -780,7 +780,7 @@ brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
         RSA_PSS_free(rsa_pss);
         return -1;
     }
-    X509_ALGOR_set_md(algor_mgf1_hash, EVP_sha384());
+    X509_ALGOR_set_md(algor_mgf1_hash, context->evp_md);
     rsa_pss_params->maskHash = algor_mgf1_hash;
 
     rsa_pss_alg->oid = OBJ_nid2obj(NID_rsassaPss);
