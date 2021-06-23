@@ -7,6 +7,8 @@
 #define OPENSSL_API_COMPAT 10100
 #endif
 
+#include <openssl/asn1.h>
+#include <openssl/asn1t.h>
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
@@ -14,6 +16,7 @@
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
+#include <openssl/x509.h>
 
 #include "blind_rsa.h"
 
@@ -300,35 +303,6 @@ brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk)
         return -1;
     }
     serialized->bytes_len = (size_t) ret;
-
-    return 0;
-}
-
-int
-brsa_publickey_id(uint8_t *id, size_t id_len, const BRSAPublicKey *pk)
-{
-    BRSASerializedKey serialized;
-
-    if (brsa_publickey_export(&serialized, pk) != 0) {
-        return -1;
-    }
-
-    uint8_t    h[SHA256_DIGEST_LENGTH];
-    SHA256_CTX hash_ctx;
-    if (SHA256_Init(&hash_ctx) != ERR_LIB_NONE ||
-        SHA256_Update(&hash_ctx, serialized.bytes, serialized.bytes_len) != ERR_LIB_NONE ||
-        SHA256_Final(h, &hash_ctx) != ERR_LIB_NONE) {
-        return -1;
-    }
-
-    brsa_serializedkey_deinit(&serialized);
-
-    size_t out_len = id_len;
-    if (out_len > sizeof h) {
-        out_len = sizeof h;
-        memset(id + out_len, 0, id_len - out_len);
-    }
-    memcpy(id, h, out_len);
 
     return 0;
 }
@@ -720,4 +694,145 @@ brsa_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey 
             const uint8_t *msg, size_t msg_len)
 {
     return rsassa_pss_verify(context, sig, pk, msg, msg_len);
+}
+
+typedef struct RSA_PSS_ALG {
+    ASN1_OBJECT *   oid;
+    RSA_PSS_PARAMS *params;
+} RSA_PSS_ALG;
+
+DECLARE_ASN1_FUNCTIONS(RSA_PSS_ALG);
+
+ASN1_SEQUENCE(RSA_PSS_ALG) = {
+    ASN1_SIMPLE(RSA_PSS_ALG, oid, ASN1_OBJECT),
+    ASN1_SIMPLE(RSA_PSS_ALG, params, RSA_PSS_PARAMS),
+} ASN1_SEQUENCE_END(RSA_PSS_ALG);
+
+IMPLEMENT_ASN1_FUNCTIONS(RSA_PSS_ALG);
+
+typedef struct RSA_PSS {
+    RSA_PSS_ALG *    alg;
+    ASN1_BIT_STRING *subject_pk_info;
+} RSA_PSS;
+
+DECLARE_ASN1_FUNCTIONS(RSA_PSS);
+
+ASN1_SEQUENCE(RSA_PSS) = {
+    ASN1_SIMPLE(RSA_PSS, alg, RSA_PSS_ALG),
+    ASN1_SIMPLE(RSA_PSS, subject_pk_info, ASN1_BIT_STRING),
+} ASN1_SEQUENCE_END(RSA_PSS);
+
+IMPLEMENT_ASN1_FUNCTIONS(RSA_PSS);
+
+int
+brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
+                           const BRSAPublicKey *pk)
+{
+    spki->bytes     = NULL;
+    spki->bytes_len = 0;
+
+    RSA_PSS *const rsa_pss = RSA_PSS_new();
+    if (rsa_pss == NULL) {
+        return -1;
+    }
+    RSA_PSS_ALG *const     rsa_pss_alg     = rsa_pss->alg;
+    RSA_PSS_PARAMS *const  rsa_pss_params  = rsa_pss_alg->params;
+    ASN1_BIT_STRING *const subject_pk_info = rsa_pss->subject_pk_info;
+
+    if ((rsa_pss_params->saltLength = ASN1_INTEGER_new()) == NULL) {
+        RSA_PSS_free(rsa_pss);
+        return -1;
+    }
+    ASN1_INTEGER_set(rsa_pss_params->saltLength, context->salt_len);
+
+    X509_ALGOR *algor_hash = X509_ALGOR_new();
+    if (algor_hash == NULL) {
+        RSA_PSS_free(rsa_pss);
+        return -1;
+    }
+    X509_ALGOR_set_md(algor_hash, context->evp_md);
+    rsa_pss_params->hashAlgorithm = algor_hash;
+
+    X509_ALGOR *algor_mgf1 = X509_ALGOR_new();
+    if (algor_mgf1 == NULL) {
+        RSA_PSS_free(rsa_pss);
+        return -1;
+    }
+    X509_ALGOR_set_md(algor_mgf1, context->evp_md);
+    ASN1_STRING *algor_mgf1_s = ASN1_STRING_new();
+    if (algor_mgf1_s == NULL) {
+        RSA_PSS_free(rsa_pss);
+        return -1;
+    }
+    ASN1_item_pack(algor_mgf1, ASN1_ITEM_rptr(X509_ALGOR), &algor_mgf1_s);
+    X509_ALGOR_free(algor_mgf1);
+
+    X509_ALGOR *container = X509_ALGOR_new();
+    if (container == NULL) {
+        RSA_PSS_free(rsa_pss);
+        return -1;
+    }
+    X509_ALGOR_set0(container, OBJ_nid2obj(NID_mgf1), V_ASN1_SEQUENCE, algor_mgf1_s);
+    rsa_pss_params->maskGenAlgorithm = container;
+
+    X509_ALGOR *algor_mgf1_hash = X509_ALGOR_new();
+    if (algor_mgf1_hash == NULL) {
+        RSA_PSS_free(rsa_pss);
+        return -1;
+    }
+    X509_ALGOR_set_md(algor_mgf1_hash, EVP_sha384());
+    rsa_pss_params->maskHash = algor_mgf1_hash;
+
+    rsa_pss_alg->oid = OBJ_nid2obj(NID_rsassaPss);
+
+    BRSASerializedKey spki_raw = {
+        .bytes     = NULL,
+        .bytes_len = 0,
+    };
+    int ret = i2d_PUBKEY(pk->evp_pkey, &spki_raw.bytes);
+    if (ret <= 0) {
+        RSA_PSS_free(rsa_pss);
+        return -1;
+    }
+    spki_raw.bytes_len = (size_t) ret;
+    ASN1_BIT_STRING_set(subject_pk_info, (void *) spki_raw.bytes, spki_raw.bytes_len);
+    brsa_serializedkey_deinit(&spki_raw);
+
+    ret = i2d_RSA_PSS(rsa_pss, &spki->bytes);
+    RSA_PSS_free(rsa_pss);
+    if (ret <= 0) {
+        return -1;
+    }
+    spki->bytes_len = (size_t) ret;
+
+    return 0;
+}
+
+int
+brsa_publickey_id(const BRSAContext *context, uint8_t *id, size_t id_len, const BRSAPublicKey *pk)
+{
+    BRSASerializedKey spki;
+
+    if (brsa_publickey_export_spki(context, &spki, pk) != 0) {
+        return -1;
+    }
+
+    uint8_t    h[SHA256_DIGEST_LENGTH];
+    SHA256_CTX hash_ctx;
+    if (SHA256_Init(&hash_ctx) != ERR_LIB_NONE ||
+        SHA256_Update(&hash_ctx, spki.bytes, spki.bytes_len) != ERR_LIB_NONE ||
+        SHA256_Final(h, &hash_ctx) != ERR_LIB_NONE) {
+        return -1;
+    }
+
+    brsa_serializedkey_deinit(&spki);
+
+    size_t out_len = id_len;
+    if (out_len > sizeof h) {
+        out_len = sizeof h;
+        memset(id + out_len, 0, id_len - out_len);
+    }
+    memcpy(id, h, out_len);
+
+    return 0;
 }

@@ -95,12 +95,16 @@ Some additional helper functions for key management are included:
 ```c
     // Get a key identifier
     uint8_t key_id[4];
-    assert(brsa_publickey_id(key_id, sizeof key_id, &pk) == 0);
+    assert(brsa_publickey_id(&context, key_id, sizeof key_id, &pk) == 0);
 
     // Key serialization
     BRSASerializedKey sk_der, pk_der;
     assert(brsa_secretkey_export(&sk_der, &sk) == 0);
     assert(brsa_publickey_export(&pk_der, &pk) == 0);
+
+    // Store the SubjectPublicKeyInfo in DER format
+    BRSASerializedKey spki_der;
+    assert(brsa_publickey_export_spki(&context, &spki_der, &pk) == 0);
 
     // Free key resources
     brsa_secretkey_deinit(&sk);
