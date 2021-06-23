@@ -14,6 +14,7 @@
 #include <openssl/rand.h>
 #include <openssl/rsa.h>
 #include <openssl/sha.h>
+#include <openssl/x509.h>
 
 #include "blind_rsa.h"
 
@@ -21,8 +22,8 @@
 #define BN_bn2bin_padded(OUT, LEN, IN) (BN_bn2binpad((IN), (OUT), (LEN)) == (LEN))
 #endif
 
-#define MIN_MODULUS_BITS 2048
-#define MAX_MODULUS_BITS 4096
+#define MIN_MODULUS_BITS      2048
+#define MAX_MODULUS_BITS      4096
 #define MAX_SERIALIZED_PK_LEN 1000
 
 #define MAX_HASH_DIGEST_LENGTH EVP_MAX_MD_SIZE
@@ -300,35 +301,6 @@ brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk)
         return -1;
     }
     serialized->bytes_len = (size_t) ret;
-
-    return 0;
-}
-
-int
-brsa_publickey_id(uint8_t *id, size_t id_len, const BRSAPublicKey *pk)
-{
-    BRSASerializedKey serialized;
-
-    if (brsa_publickey_export(&serialized, pk) != 0) {
-        return -1;
-    }
-
-    uint8_t    h[SHA256_DIGEST_LENGTH];
-    SHA256_CTX hash_ctx;
-    if (SHA256_Init(&hash_ctx) != ERR_LIB_NONE ||
-        SHA256_Update(&hash_ctx, serialized.bytes, serialized.bytes_len) != ERR_LIB_NONE ||
-        SHA256_Final(h, &hash_ctx) != ERR_LIB_NONE) {
-        return -1;
-    }
-
-    brsa_serializedkey_deinit(&serialized);
-
-    size_t out_len = id_len;
-    if (out_len > sizeof h) {
-        out_len = sizeof h;
-        memset(id + out_len, 0, id_len - out_len);
-    }
-    memcpy(id, h, out_len);
 
     return 0;
 }
@@ -720,4 +692,120 @@ brsa_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey 
             const uint8_t *msg, size_t msg_len)
 {
     return rsassa_pss_verify(context, sig, pk, msg, msg_len);
+}
+
+int
+brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
+                           const BRSAPublicKey *pk)
+{
+    static const unsigned char rsassa_pss_s_template[] = {
+    // clang-format off
+        #define SEQ 0x30
+        #define EXT 0x80
+        #define CON 0xa0
+        #define INT 0x02
+        #define BIT 0x03
+        #define OBJ 0x06
+
+        SEQ, EXT | 2, 0, 0, // container length - offset 2
+            SEQ, 61, // Algorithm sequence
+                OBJ, 9, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x0a, // Signature algorithm (RSASSA-PSS)
+                SEQ, 48, // RSASSA-PSS parameters sequence
+                    CON | 0, 2 + 2 + 9,
+                    SEQ, 2 + 9, OBJ, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, // Hash function - offset 21
+
+                    CON | 1, 2 + 24,
+                    SEQ, 24, OBJ, 9, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x08, // Padding function (MGF1) and parameters
+                        SEQ, 2 + 9, OBJ, 9, 0, 0, 0, 0, 0, 0, 0, 0, 0, // MGF1 hash function - offset 49
+
+                    CON | 2, 2 + 1, INT, 1, 0, // Salt length - offset 66
+            BIT, EXT | 2, 0, 0, // Public key length - Bit string - offset 69
+                0 // No partial bytes
+    }; // clang-format on
+
+    spki->bytes     = NULL;
+    spki->bytes_len = 0;
+
+    BRSASerializedKey spki_raw = {
+        .bytes     = NULL,
+        .bytes_len = 0,
+    };
+    int ret = i2d_PublicKey(pk->evp_pkey, &spki_raw.bytes);
+    if (ret <= 0) {
+        return -1;
+    }
+    spki_raw.bytes_len = (size_t) ret;
+
+    const size_t   template_len  = sizeof(rsassa_pss_s_template);
+    const size_t   container_len = template_len - 4 + spki_raw.bytes_len;
+    unsigned char *spki_bytes    = OPENSSL_malloc(template_len + spki_raw.bytes_len);
+    if (spki_bytes == NULL) {
+        brsa_serializedkey_deinit(&spki_raw);
+        return -1;
+    }
+    memcpy(spki_bytes, rsassa_pss_s_template, template_len);
+    memcpy(&spki_bytes[template_len], spki_raw.bytes, spki_raw.bytes_len);
+    spki_bytes[2]  = (unsigned char) (container_len >> 8);
+    spki_bytes[3]  = (unsigned char) (container_len & 0xff);
+    spki_bytes[66] = (unsigned char) (context->salt_len & 0xff);
+    spki_bytes[69] = (unsigned char) ((1 + spki_raw.bytes_len) >> 8);
+    spki_bytes[70] = (unsigned char) ((1 + spki_raw.bytes_len) & 0xff);
+    brsa_serializedkey_deinit(&spki_raw);
+
+    X509_ALGOR *algor_mgf1 = X509_ALGOR_new();
+    if (algor_mgf1 == NULL) {
+        OPENSSL_free(spki_bytes);
+        return -1;
+    }
+    X509_ALGOR_set_md(algor_mgf1, context->evp_md);
+    ASN1_STRING *algor_mgf1_s = ASN1_STRING_new();
+    if (algor_mgf1_s == NULL) {
+        OPENSSL_free(spki_bytes);
+        X509_ALGOR_free(algor_mgf1);
+        return -1;
+    }
+    ASN1_item_pack(algor_mgf1, ASN1_ITEM_rptr(X509_ALGOR), &algor_mgf1_s);
+    X509_ALGOR_free(algor_mgf1);
+    if (ASN1_STRING_length(algor_mgf1_s) != 2 + 2 + 9) {
+        OPENSSL_free(spki_bytes);
+        ASN1_STRING_free(algor_mgf1_s);
+        return -1;
+    }
+    memcpy(&spki_bytes[21], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
+    memcpy(&spki_bytes[49], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
+    ASN1_STRING_free(algor_mgf1_s);
+
+    spki->bytes     = spki_bytes;
+    spki->bytes_len = template_len + spki_raw.bytes_len;
+
+    return 0;
+}
+
+int
+brsa_publickey_id(const BRSAContext *context, uint8_t *id, size_t id_len, const BRSAPublicKey *pk)
+{
+    BRSASerializedKey spki;
+
+    if (brsa_publickey_export_spki(context, &spki, pk) != 0) {
+        return -1;
+    }
+
+    uint8_t    h[SHA256_DIGEST_LENGTH];
+    SHA256_CTX hash_ctx;
+    if (SHA256_Init(&hash_ctx) != ERR_LIB_NONE ||
+        SHA256_Update(&hash_ctx, spki.bytes, spki.bytes_len) != ERR_LIB_NONE ||
+        SHA256_Final(h, &hash_ctx) != ERR_LIB_NONE) {
+        return -1;
+    }
+
+    brsa_serializedkey_deinit(&spki);
+
+    size_t out_len = id_len;
+    if (out_len > sizeof h) {
+        out_len = sizeof h;
+        memset(id + out_len, 0, id_len - out_len);
+    }
+    memcpy(id, h, out_len);
+
+    return 0;
 }

@@ -55,7 +55,7 @@ test_default(void)
 
     // Get a key identifier
     uint8_t key_id[4];
-    assert(brsa_publickey_id(key_id, sizeof key_id, &pk) == 0);
+    assert(brsa_publickey_id(&context, key_id, sizeof key_id, &pk) == 0);
 
     // Key serialization
     BRSASerializedKey sk_der, pk_der;
