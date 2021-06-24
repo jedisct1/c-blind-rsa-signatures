@@ -3,6 +3,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef OPENSSL_API_COMPAT
+#define OPENSSL_API_COMPAT 10100
+#endif
+
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
 #include <openssl/err.h>
@@ -21,12 +25,88 @@
 #define MAX_MODULUS_BITS 4096
 #define MAX_SERIALIZED_PK_LEN 1000
 
-#define HASH_DIGEST_LENGTH SHA384_DIGEST_LENGTH
-#define HASH_EVP EVP_sha384
-#define HASH_CTX SHA512_CTX
-#define HASH_Init SHA384_Init
-#define HASH_Update SHA384_Update
-#define HASH_Final SHA384_Final
+#define MAX_HASH_DIGEST_LENGTH EVP_MAX_MD_SIZE
+
+static int
+_rsa_bits(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    return EVP_PKEY_get_bits(evp_pkey);
+#else
+    return RSA_bits(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey));
+#endif
+}
+
+static size_t
+_rsa_size(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    return EVP_PKEY_get_size(evp_pkey);
+#else
+    return (size_t) RSA_size(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey));
+#endif
+}
+
+static BIGNUM *
+_rsa_n(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "n", &bn);
+    return bn;
+#else
+    return BN_dup(RSA_get0_n(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey)));
+#endif
+}
+
+static BIGNUM *
+_rsa_e(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "e", &bn);
+    return bn;
+#else
+    return BN_dup(RSA_get0_e(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey)));
+#endif
+}
+
+void
+brsa_context_init_default(BRSAContext *context)
+{
+    brsa_context_init_custom(context, BRSA_SHA384, BRSA_DEFAULT_SALT_LENGTH);
+}
+
+void
+brsa_context_init_deterministic(BRSAContext *context)
+{
+    brsa_context_init_custom(context, BRSA_SHA384, 0);
+}
+
+int
+brsa_context_init_custom(BRSAContext *context, BRSAHashFunction hash_function, size_t salt_len)
+{
+    const EVP_MD *evp_md;
+
+    switch (hash_function) {
+    case BRSA_SHA256:
+        evp_md = EVP_sha256();
+        break;
+    case BRSA_SHA384:
+        evp_md = EVP_sha384();
+        break;
+    case BRSA_SHA512:
+        evp_md = EVP_sha512();
+        break;
+    }
+    context->evp_md = evp_md;
+    if (salt_len == BRSA_DEFAULT_SALT_LENGTH) {
+        context->salt_len = (size_t) EVP_MD_size(evp_md);
+    } else {
+        context->salt_len = salt_len;
+    }
+    return 0;
+}
 
 static BN_MONT_CTX *
 new_mont_domain(const BIGNUM *n)
@@ -53,40 +133,50 @@ new_mont_domain(const BIGNUM *n)
 int
 brsa_publickey_recover(BRSAPublicKey *pk, const BRSASecretKey *sk)
 {
-    pk->mont_ctx = NULL;
-    pk->rsa      = RSAPublicKey_dup(sk->rsa);
-    if (pk->rsa == NULL) {
-        brsa_publickey_deinit(pk);
-        return -1;
-    }
-    pk->mont_ctx = new_mont_domain(RSA_get0_n(pk->rsa));
-    if (pk->mont_ctx == NULL) {
-        brsa_publickey_deinit(pk);
-        return -1;
-    }
-    pk->use_deterministic_padding = 0;
+    BRSASerializedKey serialized = { .bytes = NULL, .bytes_len = 0 };
 
-    return 0;
+    int ret = i2d_PublicKey(sk->evp_pkey, &serialized.bytes);
+    if (ret <= 0) {
+        return -1;
+    }
+    serialized.bytes_len = (size_t) ret;
+
+    ret = brsa_publickey_import(pk, serialized.bytes, serialized.bytes_len);
+    brsa_serializedkey_deinit(&serialized);
+
+    return ret;
 }
 
 int
 brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
 {
-    sk->rsa = RSA_new();
-    if (sk->rsa == NULL) {
+    sk->evp_pkey = NULL;
+    pk->evp_pkey = NULL;
+    pk->mont_ctx = NULL;
+
+    RSA *rsa = RSA_new();
+    if (rsa == NULL) {
         return -1;
     }
 
     BIGNUM *e = BN_new();
     if (e == NULL) {
+        RSA_free(rsa);
         return -1;
     }
     BN_set_word(e, RSA_F4);
-    if (RSA_generate_key_ex(sk->rsa, modulus_bits, e, NULL) != ERR_LIB_NONE) {
+    if (RSA_generate_key_ex(rsa, modulus_bits, e, NULL) != ERR_LIB_NONE) {
+        RSA_free(rsa);
         BN_free(e);
         return -1;
     }
     BN_free(e);
+
+    if ((sk->evp_pkey = EVP_PKEY_new()) == NULL) {
+        RSA_free(rsa);
+        return -1;
+    }
+    EVP_PKEY_assign_RSA(sk->evp_pkey, rsa);
 
     if (pk != NULL) {
         return brsa_publickey_recover(pk, sk);
@@ -97,30 +187,24 @@ brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
 int
 brsa_secretkey_import(BRSASecretKey *sk, const uint8_t *der, const size_t der_len)
 {
-    EVP_PKEY *     evp_pkey = NULL;
-    const uint8_t *der_     = der;
+    const uint8_t *der_ = der;
 
+    sk->evp_pkey = NULL;
     if (der_len > LONG_MAX) {
         return -1;
     }
-    if (d2i_PrivateKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
+    if (d2i_PrivateKey(EVP_PKEY_RSA, &sk->evp_pkey, &der_, (long) der_len) == NULL) {
         return -1;
     }
-    sk->rsa = EVP_PKEY_get1_RSA(evp_pkey);
-    EVP_PKEY_free(evp_pkey);
-
     return 0;
 }
 
 int
 brsa_secretkey_export(BRSASerializedKey *serialized, const BRSASecretKey *sk)
 {
-    EVP_PKEY *evp_pkey = EVP_PKEY_new();
-    EVP_PKEY_set1_RSA(evp_pkey, sk->rsa);
     serialized->bytes = NULL;
 
-    const int ret = i2d_PrivateKey(evp_pkey, &serialized->bytes);
-    EVP_PKEY_free(evp_pkey);
+    const int ret = i2d_PrivateKey(sk->evp_pkey, &serialized->bytes);
     if (ret <= 0) {
         return -1;
     }
@@ -130,9 +214,9 @@ brsa_secretkey_export(BRSASerializedKey *serialized, const BRSASecretKey *sk)
 }
 
 static int
-_rsa_parameters_check(const RSA *rsa)
+_rsa_parameters_check(const EVP_PKEY *evp_pkey)
 {
-    const unsigned int modulus_bits = RSA_bits(rsa);
+    const unsigned int modulus_bits = _rsa_bits(evp_pkey);
 
     if (modulus_bits < MIN_MODULUS_BITS) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DIGEST_TOO_BIG_FOR_RSA_KEY, __FILE__, __LINE__);
@@ -155,9 +239,12 @@ _rsa_parameters_check(const RSA *rsa)
     BN_set_word(e3, RSA_3);
     BN_set_word(ef4, RSA_F4);
     int ret = -1;
-    if (BN_cmp(RSA_get0_e(rsa), e3) == 0 || BN_cmp(RSA_get0_e(rsa), ef4) == 0) {
+
+    BIGNUM *e = _rsa_e(evp_pkey);
+    if (e != NULL && (BN_cmp(e, e3) == 0 || BN_cmp(e, ef4) == 0)) {
         ret = 0;
     }
+    BN_free(e);
     BN_free(ef4);
     BN_free(e3);
 
@@ -167,45 +254,46 @@ _rsa_parameters_check(const RSA *rsa)
 int
 brsa_publickey_import(BRSAPublicKey *pk, const uint8_t *der, const size_t der_len)
 {
-    EVP_PKEY *     evp_pkey = NULL;
-    const uint8_t *der_     = der;
+    const uint8_t *der_ = der;
 
+    pk->evp_pkey = NULL;
+    pk->mont_ctx = NULL;
     if (der_len > MAX_SERIALIZED_PK_LEN) {
         return -1;
     }
-    if (d2i_PublicKey(EVP_PKEY_RSA, &evp_pkey, &der_, (long) der_len) == NULL) {
+    if (d2i_PublicKey(EVP_PKEY_RSA, &pk->evp_pkey, &der_, (long) der_len) == NULL) {
         return -1;
     }
     pk->mont_ctx = NULL;
-    pk->rsa      = EVP_PKEY_get1_RSA(evp_pkey);
-    EVP_PKEY_free(evp_pkey);
-    if (pk->rsa == NULL) {
+    if (pk->evp_pkey == NULL) {
         brsa_publickey_deinit(pk);
         return -1;
     }
-    if (_rsa_parameters_check(pk->rsa) != 0) {
+    if (_rsa_parameters_check(pk->evp_pkey) != 0) {
         brsa_publickey_deinit(pk);
         return -1;
     }
-    pk->mont_ctx = new_mont_domain(RSA_get0_n(pk->rsa));
+    BIGNUM *n = _rsa_n(pk->evp_pkey);
+    if (n == NULL) {
+        brsa_publickey_deinit(pk);
+        return -1;
+    }
+    pk->mont_ctx = new_mont_domain(n);
+    BN_free(n);
     if (pk->mont_ctx == NULL) {
         brsa_publickey_deinit(pk);
         return -1;
     }
-    pk->use_deterministic_padding = 0;
-
     return 0;
 }
 
 int
 brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk)
 {
-    EVP_PKEY *evp_pkey = EVP_PKEY_new();
-    EVP_PKEY_set1_RSA(evp_pkey, pk->rsa);
-    serialized->bytes = NULL;
+    serialized->bytes     = NULL;
+    serialized->bytes_len = 0;
 
-    const int ret = i2d_PublicKey(evp_pkey, &serialized->bytes);
-    EVP_PKEY_free(evp_pkey);
+    const int ret = i2d_PublicKey(pk->evp_pkey, &serialized->bytes);
     if (ret <= 0) {
         return -1;
     }
@@ -246,15 +334,15 @@ brsa_publickey_id(uint8_t *id, size_t id_len, const BRSAPublicKey *pk)
 void
 brsa_secretkey_deinit(BRSASecretKey *sk)
 {
-    RSA_free(sk->rsa);
-    sk->rsa = NULL;
+    EVP_PKEY_free(sk->evp_pkey);
+    sk->evp_pkey = NULL;
 }
 
 void
 brsa_publickey_deinit(BRSAPublicKey *pk)
 {
-    RSA_free(pk->rsa);
-    pk->rsa = NULL;
+    EVP_PKEY_free(pk->evp_pkey);
+    pk->evp_pkey = NULL;
     BN_MONT_CTX_free(pk->mont_ctx);
     pk->mont_ctx = NULL;
 }
@@ -339,16 +427,26 @@ brsa_signature_init(BRSASignature *sig, size_t sig_len)
 }
 
 static int
-_hash(uint8_t msg_hash[HASH_DIGEST_LENGTH], const uint8_t *msg, const size_t msg_len)
+_hash(const EVP_MD *evp_md, uint8_t *msg_hash, const size_t msg_hash_len, const uint8_t *msg,
+      const size_t msg_len)
 {
-    HASH_CTX hash_ctx;
-    if (HASH_Init(&hash_ctx) != ERR_LIB_NONE ||
-        HASH_Update(&hash_ctx, msg, msg_len) != ERR_LIB_NONE ||
-        HASH_Final(msg_hash, &hash_ctx) != ERR_LIB_NONE) {
+    EVP_MD_CTX *hash_ctx;
+
+    if (msg_hash_len < EVP_MD_size(evp_md)) {
         return -1;
     }
-    OPENSSL_cleanse(&hash_ctx, sizeof hash_ctx);
-    return 0;
+    if ((hash_ctx = EVP_MD_CTX_new()) == NULL) {
+        return -1;
+    }
+    int ret = -1;
+    if (EVP_DigestInit(hash_ctx, evp_md) == ERR_LIB_NONE &&
+        EVP_DigestUpdate(hash_ctx, msg, msg_len) == ERR_LIB_NONE &&
+        EVP_DigestFinal_ex(hash_ctx, msg_hash, NULL) == ERR_LIB_NONE) {
+        ret = 0;
+    }
+    EVP_MD_CTX_free(hash_ctx);
+
+    return ret;
 }
 
 static int
@@ -367,32 +465,46 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
     if (secret_inv == NULL || secret == NULL) {
         return -1;
     }
+    BIGNUM *n = _rsa_n(pk->evp_pkey);
+    if (n == NULL) {
+        return -1;
+    }
     do {
-        if (BN_rand_range(secret_inv, RSA_get0_n(pk->rsa)) != ERR_LIB_NONE) {
+        if (BN_rand_range(secret_inv, n) != ERR_LIB_NONE) {
+            BN_free(n);
             return -1;
         }
-    } while (BN_is_one(secret_inv) ||
-             BN_mod_inverse(secret, secret_inv, RSA_get0_n(pk->rsa), bn_ctx) == NULL);
+    } while (BN_is_one(secret_inv) || BN_mod_inverse(secret, secret_inv, n, bn_ctx) == NULL);
 
     // Blind the message
 
     BIGNUM *x       = BN_CTX_get(bn_ctx);
     BIGNUM *blind_m = BN_CTX_get(bn_ctx);
     if (x == NULL || blind_m == NULL) {
+        BN_free(n);
         return -1;
     }
-    if (BN_mod_exp_mont(x, secret_inv, RSA_get0_e(pk->rsa), RSA_get0_n(pk->rsa), bn_ctx,
-                        pk->mont_ctx) != ERR_LIB_NONE) {
+    BIGNUM *e = _rsa_e(pk->evp_pkey);
+    if (e == NULL) {
+        BN_free(n);
         return -1;
     }
+    if (BN_mod_exp_mont(x, secret_inv, e, n, bn_ctx, pk->mont_ctx) != ERR_LIB_NONE) {
+        BN_free(e);
+        BN_free(n);
+        return -1;
+    }
+    BN_free(e);
     BN_clear(secret_inv);
-    if (BN_mod_mul(blind_m, m, x, RSA_get0_n(pk->rsa), bn_ctx) != ERR_LIB_NONE) {
+    if (BN_mod_mul(blind_m, m, x, n, bn_ctx) != ERR_LIB_NONE) {
+        BN_free(n);
         return -1;
     }
+    BN_free(n);
 
     // Serialize the blind message
 
-    const size_t modulus_bytes = RSA_size(pk->rsa);
+    const size_t modulus_bytes = _rsa_size(pk->evp_pkey);
     if (brsa_blind_message_init(blind_message, modulus_bytes) != 0) {
         return -1;
     }
@@ -410,18 +522,18 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
 }
 
 int
-brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPublicKey *pk,
-           const uint8_t *msg, size_t msg_len)
+brsa_blind(const BRSAContext *context, BRSABlindMessage *blind_message, BRSABlindingSecret *secret,
+           BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
 {
-    if (_rsa_parameters_check(pk->rsa) != 0) {
+    if (_rsa_parameters_check(pk->evp_pkey) != 0) {
         return -1;
     }
-    const size_t modulus_bytes = RSA_size(pk->rsa);
+    const size_t modulus_bytes = _rsa_size(pk->evp_pkey);
 
     // Compute H(msg)
 
-    uint8_t msg_hash[HASH_DIGEST_LENGTH];
-    if (_hash(msg_hash, msg, msg_len) != 0) {
+    uint8_t msg_hash[MAX_HASH_DIGEST_LENGTH];
+    if (_hash(context->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
         return -1;
     }
 
@@ -433,12 +545,12 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
         return -1;
     }
 
-    const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_padding_add_PKCS1_PSS_mgf1(pk->rsa, padded, msg_hash, evp_md, evp_md,
-                                       pk->use_deterministic_padding ? 0 : -1) != ERR_LIB_NONE) {
+    const EVP_MD *evp_md = context->evp_md;
+    if (RSA_padding_add_PKCS1_PSS_mgf1((RSA *) EVP_PKEY_get0_RSA(pk->evp_pkey), padded, msg_hash,
+                                       evp_md, evp_md, context->salt_len) != ERR_LIB_NONE) {
         return -1;
     }
-    OPENSSL_cleanse(msg_hash, HASH_DIGEST_LENGTH);
+    OPENSSL_cleanse(msg_hash, sizeof msg_hash);
 
     // Blind the padded message
 
@@ -458,50 +570,54 @@ brsa_blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret, BRSAPubl
 }
 
 int
-brsa_blind_message_generate(BRSABlindMessage *blind_message, uint8_t *msg, size_t msg_len,
-                            BRSABlindingSecret *secret, BRSAPublicKey *pk)
+brsa_blind_message_generate(const BRSAContext *context, BRSABlindMessage *blind_message,
+                            uint8_t *msg, size_t msg_len, BRSABlindingSecret *secret,
+                            BRSAPublicKey *pk)
 {
     if (RAND_bytes(msg, msg_len) != ERR_LIB_NONE) {
         return -1;
     }
-    return brsa_blind(blind_message, secret, pk, msg, msg_len);
+    return brsa_blind(context, blind_message, secret, pk, msg, msg_len);
 }
 
 int
-brsa_blind_sign(BRSABlindSignature *blind_sig, BRSASecretKey *sk,
+brsa_blind_sign(const BRSAContext *context, BRSABlindSignature *blind_sig, BRSASecretKey *sk,
                 const BRSABlindMessage *blind_message)
 {
-    if (_rsa_parameters_check(sk->rsa) != 0) {
+    (void) context;
+
+    if (_rsa_parameters_check(sk->evp_pkey) != 0) {
         return -1;
     }
-    const size_t modulus_bytes = RSA_size(sk->rsa);
+    const size_t modulus_bytes = _rsa_size(sk->evp_pkey);
     if (blind_message->blind_message_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
         return -1;
     }
 
-    if (brsa_blind_signature_init(blind_sig, RSA_size(sk->rsa)) != 0) {
+    if (brsa_blind_signature_init(blind_sig, _rsa_size(sk->evp_pkey)) != 0) {
         return -1;
     }
     if (RSA_private_encrypt(blind_sig->blind_sig_len, blind_message->blind_message,
-                            blind_sig->blind_sig, sk->rsa, RSA_NO_PADDING) < 0) {
+                            blind_sig->blind_sig, (RSA *) EVP_PKEY_get0_RSA(sk->evp_pkey),
+                            RSA_NO_PADDING) < 0) {
         return -1;
     }
     return 0;
 }
 
 static int
-rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg,
-                  const size_t msg_len)
+rsassa_pss_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey *pk,
+                  const uint8_t *msg, const size_t msg_len)
 {
-    const size_t modulus_bytes = RSA_size(pk->rsa);
+    const size_t modulus_bytes = _rsa_size(pk->evp_pkey);
     if (sig->sig_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
         return -1;
     }
 
-    uint8_t msg_hash[HASH_DIGEST_LENGTH];
-    if (_hash(msg_hash, msg, msg_len) != 0) {
+    uint8_t msg_hash[MAX_HASH_DIGEST_LENGTH];
+    if (_hash(context->evp_md, msg_hash, sizeof msg_hash, msg, msg_len) != 0) {
         return -1;
     }
 
@@ -511,14 +627,15 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
         return -1;
     }
 
-    if (RSA_public_decrypt(sig->sig_len, sig->sig, em, pk->rsa, RSA_NO_PADDING) < 0) {
+    if (RSA_public_decrypt(sig->sig_len, sig->sig, em, (RSA *) EVP_PKEY_get0_RSA(pk->evp_pkey),
+                           RSA_NO_PADDING) < 0) {
         OPENSSL_free(em);
         return -1;
     }
 
-    const EVP_MD *evp_md = HASH_EVP();
-    if (RSA_verify_PKCS1_PSS_mgf1(pk->rsa, msg_hash, evp_md, evp_md, em,
-                                  pk->use_deterministic_padding ? 0 : -1) != ERR_LIB_NONE) {
+    const EVP_MD *evp_md = context->evp_md;
+    if (RSA_verify_PKCS1_PSS_mgf1((RSA *) EVP_PKEY_get0_RSA(pk->evp_pkey), msg_hash, evp_md, evp_md,
+                                  em, context->salt_len) != ERR_LIB_NONE) {
         OPENSSL_free(em);
         return -1;
     }
@@ -527,7 +644,7 @@ rsassa_pss_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *ms
 }
 
 static int
-_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
+_finalize(const BRSAContext *context, BRSASignature *sig, const BRSABlindSignature *blind_sig,
           const BRSABlindingSecret *secret_, BRSAPublicKey *pk, BN_CTX *bn_ctx, const uint8_t *msg,
           size_t msg_len)
 {
@@ -544,18 +661,24 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
         return -1;
     }
 
-    if (BN_mod_mul(z, blind_z, secret, RSA_get0_n(pk->rsa), bn_ctx) != ERR_LIB_NONE) {
+    BIGNUM *n = _rsa_n(pk->evp_pkey);
+    if (n == NULL) {
         return -1;
     }
+    if (BN_mod_mul(z, blind_z, secret, n, bn_ctx) != ERR_LIB_NONE) {
+        BN_free(n);
+        return -1;
+    }
+    BN_free(n);
 
-    if (brsa_signature_init(sig, RSA_size(pk->rsa)) != 0) {
+    if (brsa_signature_init(sig, _rsa_size(pk->evp_pkey)) != 0) {
         return -1;
     }
     if (BN_bn2bin_padded(sig->sig, (int) sig->sig_len, z) != ERR_LIB_NONE) {
         brsa_signature_deinit(sig);
         return -1;
     }
-    if (rsassa_pss_verify(sig, pk, msg, msg_len) != 0) {
+    if (rsassa_pss_verify(context, sig, pk, msg, msg_len) != 0) {
         brsa_signature_deinit(sig);
         return -1;
     }
@@ -563,14 +686,14 @@ _finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 }
 
 int
-brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
+brsa_finalize(const BRSAContext *context, BRSASignature *sig, const BRSABlindSignature *blind_sig,
               const BRSABlindingSecret *secret, BRSAPublicKey *pk, const uint8_t *msg,
               size_t msg_len)
 {
-    if (_rsa_parameters_check(pk->rsa) != 0) {
+    if (_rsa_parameters_check(pk->evp_pkey) != 0) {
         return -1;
     }
-    const size_t modulus_bytes = RSA_size(pk->rsa);
+    const size_t modulus_bytes = _rsa_size(pk->evp_pkey);
     if (blind_sig->blind_sig_len != modulus_bytes || secret->secret_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
         return -1;
@@ -582,7 +705,7 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
     }
     BN_CTX_start(bn_ctx);
 
-    const int ret = _finalize(sig, blind_sig, secret, pk, bn_ctx, msg, msg_len);
+    const int ret = _finalize(context, sig, blind_sig, secret, pk, bn_ctx, msg, msg_len);
 
     BN_CTX_end(bn_ctx);
     BN_CTX_free(bn_ctx);
@@ -591,13 +714,8 @@ brsa_finalize(BRSASignature *sig, const BRSABlindSignature *blind_sig,
 }
 
 int
-brsa_verify(const BRSASignature *sig, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
+brsa_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey *pk,
+            const uint8_t *msg, size_t msg_len)
 {
-    return rsassa_pss_verify(sig, pk, msg, msg_len);
-}
-
-void
-brsa_use_deterministic_padding(BRSAPublicKey *pk, int deterministic_padding)
-{
-    pk->use_deterministic_padding = !!deterministic_padding;
+    return rsassa_pss_verify(context, sig, pk, msg, msg_len);
 }

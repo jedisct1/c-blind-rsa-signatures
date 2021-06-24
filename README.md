@@ -24,12 +24,16 @@ The scheme was designed by David Chaum, and was originally implemented for anony
 
 ## Dependencies
 
-This implementation requires OpenSSL or BoringSSL.
+This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
 
 ## Usage
 
 ```c
     #include <blind_rsa.h>
+
+    // Initialize a context with the default parameters
+    BRSAContext context;
+    brsa_context_init_default(&context);
 
     // [SERVER]: Generate a RSA-2048 key pair
     BRSASecretKey sk;
@@ -45,9 +49,9 @@ This implementation requires OpenSSL or BoringSSL.
     assert(brsa_blind_message_generate(&blind_msg, msg, msg_len, &client_secret, &pk) == 0);
 
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
-    // THe client secret should not be sent to the server.
+    // The client secret should not be sent to the server.
     BRSABlindSignature blind_sig;
-    assert(brsa_blind_sign(&blind_sig, &sk, &blind_msg) == 0);
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
     brsa_blind_message_deinit(&blind_msg);
 
     // [CLIENT]: later, when the client wants to redeem a signed blind message,
@@ -58,13 +62,32 @@ This implementation requires OpenSSL or BoringSSL.
     // Note that the finalization function also verifies that the new signature
     // is correct for the server public key.
     BRSASignature sig;
-    assert(brsa_finalize(&sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
+    assert(brsa_finalize(&context, &sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
     brsa_blind_signature_deinit(&blind_sig);
     brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
-    assert(brsa_verify(&sig, &pk, msg, msg_len) == 0);
+    assert(brsa_verify(&context, &sig, &pk, msg, msg_len) == 0);
     brsa_signature_deinit(&sig);
+```
+
+Deterministic padding is also supported, by creating a context with `brsa_context_init_deterministic()`:
+
+```c
+    // Initialize a context to use deterministic padding
+    BRSAContext context;
+    brsa_context_init_deterministic(&context);
+```
+
+Most applications should use the default (probabilistic) mode instead.
+
+A custom hash function and salt length can also be specified with `brsa_context_init_custom()`:
+
+```c
+    // Initialize a context with SHA-256 as a Hash and MGF function,
+    // and a 48 byte salt.
+    BRSAContext context;
+    brsa_context_init_custom(&context, BRSA_SHA256, 48);
 ```
 
 Some additional helper functions for key management are included:
