@@ -406,7 +406,7 @@ _hash(const EVP_MD *evp_md, uint8_t *msg_hash, const size_t msg_hash_len, const 
 {
     EVP_MD_CTX *hash_ctx;
 
-    if (msg_hash_len < EVP_MD_size(evp_md)) {
+    if (msg_hash_len < (size_t) EVP_MD_size(evp_md)) {
         return -1;
     }
     if ((hash_ctx = EVP_MD_CTX_new()) == NULL) {
@@ -495,6 +495,48 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
     return 0;
 }
 
+static int
+_check_canonical(const BRSASecretKey *sk, const BRSABlindMessage *blind_message)
+{
+    const EVP_PKEY *evp_pkey      = sk->evp_pkey;
+    const size_t    modulus_bytes = _rsa_size(evp_pkey);
+    if (blind_message->blind_message_len != modulus_bytes) {
+        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
+        return -1;
+    }
+
+    BIGNUM *       n;
+    unsigned char *n_s;
+    if ((n = _rsa_n(evp_pkey)) == NULL) {
+        return -1;
+    }
+    if ((n_s = OPENSSL_malloc(modulus_bytes)) == NULL) {
+        BN_free(n);
+        return -1;
+    }
+    if (BN_bn2bin_padded(n_s, (int) modulus_bytes, n) != ERR_LIB_NONE) {
+        OPENSSL_free(n_s);
+        BN_free(n);
+        return -1;
+    }
+    BN_free(n);
+    size_t i;
+    for (i = 0; i < modulus_bytes; i++) {
+        const uint8_t a = blind_message->blind_message[i];
+        const uint8_t b = n_s[i];
+        if (a < b) {
+            break;
+        }
+        if (a > b || i + 1 == modulus_bytes) {
+            OPENSSL_free(n_s);
+            ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
+            return -1;
+        }
+    }
+    OPENSSL_free(n_s);
+    return 0;
+}
+
 int
 brsa_blind(const BRSAContext *context, BRSABlindMessage *blind_message, BRSABlindingSecret *secret,
            BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
@@ -563,9 +605,7 @@ brsa_blind_sign(const BRSAContext *context, BRSABlindSignature *blind_sig, BRSAS
     if (_rsa_parameters_check(sk->evp_pkey) != 0) {
         return -1;
     }
-    const size_t modulus_bytes = _rsa_size(sk->evp_pkey);
-    if (blind_message->blind_message_len != modulus_bytes) {
-        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
+    if (_check_canonical(sk, blind_message) != 0) {
         return -1;
     }
 
