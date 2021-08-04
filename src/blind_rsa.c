@@ -615,6 +615,7 @@ brsa_blind_sign(const BRSAContext *context, BRSABlindSignature *blind_sig, BRSAS
     if (RSA_private_encrypt(blind_sig->blind_sig_len, blind_message->blind_message,
                             blind_sig->blind_sig, (RSA *) EVP_PKEY_get0_RSA(sk->evp_pkey),
                             RSA_NO_PADDING) < 0) {
+        brsa_blind_signature_deinit(blind_sig);
         return -1;
     }
     return 0;
