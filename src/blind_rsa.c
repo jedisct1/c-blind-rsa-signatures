@@ -807,13 +807,27 @@ brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
     }
     ASN1_item_pack(algor_mgf1, ASN1_ITEM_rptr(X509_ALGOR), &algor_mgf1_s);
     X509_ALGOR_free(algor_mgf1);
-    if (ASN1_STRING_length(algor_mgf1_s) != 2 + 2 + 9) {
+
+    unsigned char        mgf1_s_data[2 + 2 + 9];
+    const unsigned char *alg_data = ASN1_STRING_get0_data(algor_mgf1_s);
+    if (ASN1_STRING_length(algor_mgf1_s) == sizeof mgf1_s_data) {
+        memcpy(mgf1_s_data, alg_data, sizeof mgf1_s_data);
+    } else if (ASN1_STRING_length(algor_mgf1_s) == sizeof mgf1_s_data + 2) { // Trim NULL
+        if (alg_data[1] != sizeof mgf1_s_data || alg_data[3] != 9 ||
+            alg_data[sizeof mgf1_s_data] != 5 || alg_data[1 + sizeof mgf1_s_data] != 0) {
+            OPENSSL_free(spki_bytes);
+            ASN1_STRING_free(algor_mgf1_s);
+            return -1;
+        }
+        memcpy(mgf1_s_data, alg_data, sizeof mgf1_s_data);
+        mgf1_s_data[1] -= 2;
+    } else {
         OPENSSL_free(spki_bytes);
         ASN1_STRING_free(algor_mgf1_s);
         return -1;
     }
-    memcpy(&spki_bytes[21], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
-    memcpy(&spki_bytes[49], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
+    memcpy(&spki_bytes[21], mgf1_s_data, sizeof mgf1_s_data);
+    memcpy(&spki_bytes[49], mgf1_s_data, sizeof mgf1_s_data);
     ASN1_STRING_free(algor_mgf1_s);
 
     spki->bytes     = spki_bytes;
