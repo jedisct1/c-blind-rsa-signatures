@@ -808,12 +808,25 @@ brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
     ASN1_item_pack(algor_mgf1, ASN1_ITEM_rptr(X509_ALGOR), &algor_mgf1_s);
     X509_ALGOR_free(algor_mgf1);
     if (ASN1_STRING_length(algor_mgf1_s) != 2 + 2 + 9) {
-        OPENSSL_free(spki_bytes);
-        ASN1_STRING_free(algor_mgf1_s);
-        return -1;
+        // Last 2 bytes are trailing NULL
+        if (ASN1_STRING_length(algor_mgf1_s) != 2 + 2 + 9 + 2) {
+          OPENSSL_free(spki_bytes);
+          ASN1_STRING_free(algor_mgf1_s);
+          return -1;
+        }
+
+        if(algor_mgf1_s->data[1] != 13 || algor_mgf1_s->data[3] !=9 || algor_mgf1_s->data[13] != 5 || algor_mgf1_s->data[14] !=0){
+          OPENSSL_free(spki_bytes);
+          ASN1_STRING_free(algor_mgf1_s);
+          return -1;
+        }
+        algor_mgf1_s->data[1] -=2;
+        memcpy(&spki_bytes[21], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s)-2u);
+        memcpy(&spki_bytes[49], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s)-2u);
+    } else {
+      memcpy(&spki_bytes[21], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
+      memcpy(&spki_bytes[49], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
     }
-    memcpy(&spki_bytes[21], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
-    memcpy(&spki_bytes[49], ASN1_STRING_get0_data(algor_mgf1_s), ASN1_STRING_length(algor_mgf1_s));
     ASN1_STRING_free(algor_mgf1_s);
 
     spki->bytes     = spki_bytes;
