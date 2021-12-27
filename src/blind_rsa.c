@@ -154,8 +154,11 @@ int
 brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
 {
     sk->evp_pkey = NULL;
-    pk->evp_pkey = NULL;
-    pk->mont_ctx = NULL;
+
+    if (pk != NULL) {
+        pk->evp_pkey = NULL;
+        pk->mont_ctx = NULL;
+    }
 
     RSA *rsa = RSA_new();
     if (rsa == NULL) {
