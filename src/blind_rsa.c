@@ -153,6 +153,9 @@ brsa_publickey_recover(BRSAPublicKey *pk, const BRSASecretKey *sk)
 int
 brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
 {
+    if (sk == NULL || pk == NULL)
+        return 0;
+
     sk->evp_pkey = NULL;
     pk->evp_pkey = NULL;
     pk->mont_ctx = NULL;
@@ -181,10 +184,7 @@ brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
     }
     EVP_PKEY_assign_RSA(sk->evp_pkey, rsa);
 
-    if (pk != NULL) {
-        return brsa_publickey_recover(pk, sk);
-    }
-    return 0;
+    return brsa_publickey_recover(pk, sk);
 }
 
 int
