@@ -123,4 +123,4 @@ All these functions return `0` on success and `-1` on error.
 
 * [Zig](https://github.com/jedisct1/zig-blind-rsa-signatures)
 * [Rust](https://github.com/jedisct1/rust-blind-rsa-signatures)
-
+* [Go](https://github.com/cloudflare/circl/tree/master/blindsign)
