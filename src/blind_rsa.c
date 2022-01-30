@@ -508,7 +508,7 @@ _check_canonical(const BRSASecretKey *sk, const BRSABlindMessage *blind_message)
         return -1;
     }
 
-    BIGNUM *       n;
+    BIGNUM        *n;
     unsigned char *n_s;
     if ((n = _rsa_n(evp_pkey)) == NULL) {
         return -1;
@@ -559,7 +559,7 @@ brsa_blind(const BRSAContext *context, BRSABlindMessage *blind_message, BRSABlin
     // PSS-MGF1 padding
 
     const size_t padded_len = modulus_bytes;
-    uint8_t *    padded     = OPENSSL_malloc(padded_len);
+    uint8_t     *padded     = OPENSSL_malloc(padded_len);
     if (padded == NULL) {
         return -1;
     }
@@ -640,7 +640,7 @@ rsassa_pss_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPubl
     }
 
     const size_t em_len = sig->sig_len;
-    uint8_t *    em     = OPENSSL_malloc(em_len);
+    uint8_t     *em     = OPENSSL_malloc(em_len);
     if (em == NULL) {
         return -1;
     }
@@ -738,12 +738,8 @@ brsa_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey 
     return rsassa_pss_verify(context, sig, pk, msg, msg_len);
 }
 
-int
-brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
-                           const BRSAPublicKey *pk)
-{
-    static const unsigned char rsassa_pss_s_template[] = {
-    // clang-format off
+static const unsigned char rsassa_pss_s_template[] = {
+// clang-format off
         #define SEQ 0x30
         #define EXT 0x80
         #define CON 0xa0
@@ -767,6 +763,10 @@ brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
                 0 // No partial bytes
     }; // clang-format on
 
+int
+brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
+                           const BRSAPublicKey *pk)
+{
     spki->bytes     = NULL;
     spki->bytes_len = 0;
 
@@ -780,7 +780,7 @@ brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
     }
     spki_raw.bytes_len = (size_t) ret;
 
-    const size_t   template_len  = sizeof(rsassa_pss_s_template);
+    const size_t   template_len  = sizeof rsassa_pss_s_template;
     const size_t   container_len = template_len - 4 + spki_raw.bytes_len;
     unsigned char *spki_bytes    = OPENSSL_malloc(template_len + spki_raw.bytes_len);
     if (spki_bytes == NULL) {
@@ -837,6 +837,26 @@ brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
     spki->bytes_len = template_len + spki_raw.bytes_len;
 
     return 0;
+}
+
+int
+brsa_publickey_import_spki(const BRSAContext *context, BRSAPublicKey *pk, const uint8_t *spki,
+                           const size_t spki_len)
+{
+    (void) context;
+
+    const size_t template_len = sizeof rsassa_pss_s_template;
+    if (spki_len > MAX_SERIALIZED_PK_LEN || spki_len <= template_len) {
+        return -1;
+    }
+    if (memcmp(&rsassa_pss_s_template[6], &spki[6], 18 - 6) != 0) {
+        return -1;
+    }
+    const size_t alg_len = spki[5];
+    if (spki_len <= alg_len + 11) {
+        return -1;
+    }
+    return brsa_publickey_import(pk, &spki[alg_len + 11], spki_len - alg_len - 11);
 }
 
 int

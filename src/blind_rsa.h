@@ -101,9 +101,13 @@ int brsa_publickey_export(BRSASerializedKey *serialized, const BRSAPublicKey *pk
 // Recover a public key from a secret key
 int brsa_publickey_recover(BRSAPublicKey *pk, const BRSASecretKey *sk) __attribute__((nonnull));
 
-// Put the SubjectPublicKeyInfo for the public key in DER format into `spki`
+// Put the SubjectPublicKeyInfo for the public key into `spki`
 int brsa_publickey_export_spki(const BRSAContext *context, BRSASerializedKey *spki,
                                const BRSAPublicKey *pk) __attribute__((nonnull));
+
+// Import a public key encoded as SPKI.
+int brsa_publickey_import_spki(const BRSAContext *context, BRSAPublicKey *pk, const uint8_t *spki,
+                               const size_t spki_len) __attribute__((nonnull));
 
 // Return an identifier for a public key.
 // Up to `id_len` bytes will be stored into `id`.
