@@ -1,23 +1,15 @@
 const std = @import("std");
-const builtin = @import("builtin");
-const fmt = std.fmt;
-const fs = std.fs;
-const heap = std.heap;
-const mem = std.mem;
-const LibExeObjStep = std.build.LibExeObjStep;
-const Target = std.Target;
 
-pub fn build(b: *std.build.Builder) !void {
+pub fn build(b: *std.Build) !void {
     var target = b.standardTargetOptions(.{});
-    var mode = b.standardReleaseOptions();
+    var optimize = b.standardOptimizeOption(.{});
 
-    const lib = b.addStaticLibrary("blind_rsa", null);
-    lib.setTarget(target);
-    lib.setBuildMode(mode);
+    const lib = b.addStaticLibrary(.{
+        .name = "blind_rsa",
+        .target = target,
+        .optimize = optimize,
+    });
     lib.install();
-    if (mode != .Debug) {
-        lib.strip = true;
-    }
     lib.linkLibC();
     lib.addIncludePath("/opt/homebrew/opt/openssl/include");
     lib.addLibraryPath("/opt/homebrew/opt/openssl/lib");
