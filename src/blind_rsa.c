@@ -435,6 +435,16 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
         return -1;
     }
 
+    // Check that gcd(m, n) == 1
+    BIGNUM *gcd = BN_CTX_get(bn_ctx);
+    if (gcd == NULL) {
+        return -1;
+    }
+    BN_gcd(gcd, m, _rsa_n(pk->evp_pkey), bn_ctx);
+    if (BN_is_one(gcd) == 0) {
+        return -1;
+    }
+
     // Compute a blind factor and its inverse
 
     BIGNUM *secret_inv = BN_CTX_get(bn_ctx);
