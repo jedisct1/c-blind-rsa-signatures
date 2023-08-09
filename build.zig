@@ -9,10 +9,10 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = optimize,
     });
-    lib.install();
+    b.installArtifact(lib);
     lib.linkLibC();
-    lib.addIncludePath("/opt/homebrew/opt/openssl/include");
-    lib.addLibraryPath("/opt/homebrew/opt/openssl/lib");
+    lib.addIncludePath(.{ .path = "/opt/homebrew/opt/openssl/include" });
+    lib.addLibraryPath(.{ .path = "/opt/homebrew/opt/openssl/lib" });
     lib.linkSystemLibrary("crypto");
-    lib.addCSourceFile("src/blind_rsa.c", &.{});
+    lib.addCSourceFiles(&.{"src/blind_rsa.c"}, &.{});
 }
