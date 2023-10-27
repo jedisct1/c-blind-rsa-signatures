@@ -51,7 +51,7 @@ typedef struct BRSASignature {
 
 // An RSA public key
 typedef struct BRSAPublicKey {
-    EVP_PKEY *   evp_pkey;
+    EVP_PKEY    *evp_pkey;
     BN_MONT_CTX *mont_ctx;
 } BRSAPublicKey;
 
@@ -65,6 +65,11 @@ typedef struct BRSASerializedKey {
     uint8_t *bytes;
     size_t   bytes_len;
 } BRSASerializedKey;
+
+// A message randomizer ("noise" added before the message to be signed)
+typedef struct BRSAMessageRandomizer {
+    uint8_t noise[32];
+} BRSAMessageRandomizer;
 
 // Initialize a standard context for probabilistic padding (recommended for most applications)
 void brsa_context_init_default(BRSAContext *context) __attribute__((nonnull));
@@ -146,8 +151,8 @@ int brsa_blind_message_generate(const BRSAContext *context, BRSABlindMessage *bl
 // `pk`, and put the serialized blind message into `blind_message`, as well as
 // the secret blinding factor into `secret`
 int brsa_blind(const BRSAContext *context, BRSABlindMessage *blind_message,
-               BRSABlindingSecret *secret, BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len)
-    __attribute__((nonnull));
+               BRSABlindingSecret *secret, BRSAMessageRandomizer *msg_randomizer, BRSAPublicKey *pk,
+               const uint8_t *msg, size_t msg_len) __attribute__((nonnull(1, 2, 3, 5, 6)));
 
 // Compute a signature for a blind message `blind_message` of
 // length `blind_message_len` bytes using a key pair `sk`, and put the
@@ -160,13 +165,14 @@ int brsa_blind_sign(const BRSAContext *context, BRSABlindSignature *blind_sig, B
 // automatically verifies that the new signature is valid for the given public key.
 int brsa_finalize(const BRSAContext *context, BRSASignature *sig,
                   const BRSABlindSignature *blind_sig, const BRSABlindingSecret *secret_,
-                  BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len) __attribute__((nonnull));
+                  const BRSAMessageRandomizer *msg_randomizer, BRSAPublicKey *pk,
+                  const uint8_t *msg, size_t msg_len) __attribute__((nonnull(1, 2, 3, 4, 6, 7)));
 
 // Verify a non-blind signature `sig` for a message `msg` of length `msg_len` using the public key
 // `pk`. The function returns `0` if the signature if valid, and `-1` on error.
 int brsa_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPublicKey *pk,
-                const uint8_t *msg, size_t msg_len) __attribute__((nonnull))
-__attribute__((warn_unused_result));
+                const BRSAMessageRandomizer *msg_randomizer, const uint8_t *msg, size_t msg_len)
+    __attribute__((nonnull(1, 2, 3, 5))) __attribute__((warn_unused_result));
 
 #ifdef __cplusplus
 }

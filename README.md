@@ -22,6 +22,8 @@ Using that scheme, a server can issue a token and verify that a client has a val
 
 The scheme was designed by David Chaum, and was originally implemented for anonymizing DigiCash transactions.
 
+Random noise must be added to messages that don't include enough entropy. An optional "Message Randomizer" can be used for that purpose.
+
 ## Dependencies
 
 This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
@@ -40,13 +42,17 @@ This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
     BRSAPublicKey pk;
     assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
 
+    // Noise is not required if the message is random.
+    BRSAMessageRandomizer *msg_randomizer = NULL;
+
     // [CLIENT]: create a random message and blind it for the server whose public key is `pk`.
     // The client must store the message and the secret.
     uint8_t            msg[32];
     const size_t       msg_len = sizeof msg;
     BRSABlindMessage   blind_msg;
     BRSABlindingSecret client_secret;
-    assert(brsa_blind_message_generate(&blind_msg, msg, msg_len, &client_secret, &pk) == 0);
+    assert(brsa_blind_message_generate(&context, &blind_msg, msg, msg_len, &client_secret, &pk) ==
+           0);
 
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
     // The client secret should not be sent to the server.
@@ -59,16 +65,20 @@ This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
     // original message.
     // The client then owns a new valid (message, signature) pair, and the
     // server cannot link it to a previous(blinded message, blind signature) pair.
-    // Note that the finalization function also verifies that the new signature
-    // is correct for the server public key.
+    // Note that the finalization function also verifies that the signature is
+    // correct for the server public key.
     BRSASignature sig;
-    assert(brsa_finalize(&context, &sig, &blind_sig, &client_secret, &pk, msg, msg_len) == 0);
+    assert(brsa_finalize(
+               &context, &sig, &blind_sig, &client_secret, msg_randomizer, &pk, msg, msg_len) == 0);
     brsa_blind_signature_deinit(&blind_sig);
     brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
-    assert(brsa_verify(&context, &sig, &pk, msg, msg_len) == 0);
+    assert(brsa_verify(&context, &sig, &pk, msg_randomizer, msg, msg_len) == 0);
     brsa_signature_deinit(&sig);
+
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
 ```
 
 Deterministic padding is also supported, by creating a context with `brsa_context_init_deterministic()`:
