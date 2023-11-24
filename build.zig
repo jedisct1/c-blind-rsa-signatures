@@ -1,8 +1,8 @@
 const std = @import("std");
 
 pub fn build(b: *std.Build) !void {
-    var target = b.standardTargetOptions(.{});
-    var optimize = b.standardOptimizeOption(.{});
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
 
     const lib = b.addStaticLibrary(.{
         .name = "blind_rsa",
