@@ -14,7 +14,7 @@ pub fn build(b: *std.Build) !void {
     lib.addIncludePath(.{ .path = "/opt/homebrew/opt/openssl/include" });
     lib.addLibraryPath(.{ .path = "/opt/homebrew/opt/openssl/lib" });
     lib.linkSystemLibrary("crypto");
-    const source_files = &.{"src/blind_rsa.c"};
+    const source_files = &.{ "src/blind_rsa.c", "src/partially_blind_rsa.c" };
     if (@hasDecl(std.Build.Step.Compile, "AddCSourceFilesOptions")) {
         lib.addCSourceFiles(.{ .files = source_files });
     } else {
