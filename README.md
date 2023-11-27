@@ -43,6 +43,7 @@ This implementation requires OpenSSL (1.1.x or 3.x.y) or BoringSSL.
     assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
 
     // Noise is not required if the message is random.
+    // If it is not NULL, it will be automatically filled by brsa_blind_sign().
     BRSAMessageRandomizer *msg_randomizer = NULL;
 
     // [CLIENT]: create a random message and blind it for the server whose public key is `pk`.
