@@ -72,6 +72,28 @@ _rsa_e(const EVP_PKEY *evp_pkey)
 #endif
 }
 
+static BN_MONT_CTX *
+new_mont_domain(const BIGNUM *n)
+{
+    BN_MONT_CTX *mont_ctx = BN_MONT_CTX_new();
+    if (mont_ctx == NULL) {
+        return NULL;
+    }
+    BN_CTX *bn_ctx = BN_CTX_new();
+    if (bn_ctx == NULL) {
+        return NULL;
+    }
+    BN_CTX_start(bn_ctx);
+    const int ret = BN_MONT_CTX_set(mont_ctx, n, bn_ctx);
+    if (ret != ERR_LIB_NONE) {
+        mont_ctx = NULL;
+    }
+    BN_CTX_end(bn_ctx);
+    BN_CTX_free(bn_ctx);
+
+    return mont_ctx;
+}
+
 void
 brsa_context_init_default(BRSAContext *context)
 {
@@ -109,28 +131,6 @@ brsa_context_init_custom(BRSAContext *context, BRSAHashFunction hash_function, s
         context->salt_len = salt_len;
     }
     return 0;
-}
-
-static BN_MONT_CTX *
-new_mont_domain(const BIGNUM *n)
-{
-    BN_MONT_CTX *mont_ctx = BN_MONT_CTX_new();
-    if (mont_ctx == NULL) {
-        return NULL;
-    }
-    BN_CTX *bn_ctx = BN_CTX_new();
-    if (bn_ctx == NULL) {
-        return NULL;
-    }
-    BN_CTX_start(bn_ctx);
-    const int ret = BN_MONT_CTX_set(mont_ctx, n, bn_ctx);
-    if (ret != ERR_LIB_NONE) {
-        mont_ctx = NULL;
-    }
-    BN_CTX_end(bn_ctx);
-    BN_CTX_free(bn_ctx);
-
-    return mont_ctx;
 }
 
 int
@@ -222,7 +222,7 @@ brsa_secretkey_export(BRSASerializedKey *serialized, const BRSASecretKey *sk)
 static int
 _rsa_parameters_check(const EVP_PKEY *evp_pkey)
 {
-    const unsigned int modulus_bits = _rsa_bits(evp_pkey);
+    const int modulus_bits = _rsa_bits(evp_pkey);
 
     if (modulus_bits < MIN_MODULUS_BITS) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DIGEST_TOO_BIG_FOR_RSA_KEY, __FILE__, __LINE__);
@@ -442,14 +442,20 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
     if (BN_bin2bn(padded, padded_len, m) == NULL) {
         return -1;
     }
+    BIGNUM *n = _rsa_n(pk->evp_pkey);
+    if (n == NULL) {
+        return -1;
+    }
 
     // Check that gcd(m, n) == 1
     BIGNUM *gcd = BN_CTX_get(bn_ctx);
     if (gcd == NULL) {
+        BN_free(n);
         return -1;
     }
-    BN_gcd(gcd, m, _rsa_n(pk->evp_pkey), bn_ctx);
+    BN_gcd(gcd, m, n, bn_ctx);
     if (BN_is_one(gcd) == 0) {
+        BN_free(n);
         return -1;
     }
 
@@ -458,10 +464,7 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
     BIGNUM *secret_inv = BN_CTX_get(bn_ctx);
     BIGNUM *secret     = BN_CTX_get(bn_ctx);
     if (secret_inv == NULL || secret == NULL) {
-        return -1;
-    }
-    BIGNUM *n = _rsa_n(pk->evp_pkey);
-    if (n == NULL) {
+        BN_free(n);
         return -1;
     }
     do {
