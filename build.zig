@@ -16,19 +16,19 @@ pub fn build(b: *std.Build) !void {
 
     lib.linkLibC();
     if (with_boringssl.len > 0) {
-        var buf_include: [std.os.PATH_MAX]u8 = undefined;
+        var buf_include: [std.posix.PATH_MAX]u8 = undefined;
         var buf_include_alloc = std.heap.FixedBufferAllocator.init(&buf_include);
         const path_include = try std.fs.path.join(buf_include_alloc.allocator(), &.{ with_boringssl, "include" });
 
-        var buf_lib: [std.os.PATH_MAX]u8 = undefined;
+        var buf_lib: [std.posix.PATH_MAX]u8 = undefined;
         var buf_lib_alloc = std.heap.FixedBufferAllocator.init(&buf_lib);
         const path_lib = try std.fs.path.join(buf_lib_alloc.allocator(), &.{ with_boringssl, "lib" });
 
-        lib.addIncludePath(.{ .path = path_include });
-        lib.addLibraryPath(.{ .path = path_lib });
+        lib.addIncludePath(b.path(path_include));
+        lib.addLibraryPath(b.path(path_lib));
     } else {
-        lib.addIncludePath(.{ .path = "/opt/homebrew/opt/openssl@3/include" });
-        lib.addLibraryPath(.{ .path = "/opt/homebrew/opt/openssl@3/lib" });
+        lib.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/include" });
+        lib.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/lib" });
     }
     lib.linkSystemLibrary("crypto");
 
@@ -46,19 +46,19 @@ pub fn build(b: *std.Build) !void {
     });
 
     if (with_boringssl.len > 0) {
-        var buf_include: [std.os.PATH_MAX]u8 = undefined;
+        var buf_include: [std.posix.PATH_MAX]u8 = undefined;
         var buf_include_alloc = std.heap.FixedBufferAllocator.init(&buf_include);
         const path_include = try std.fs.path.join(buf_include_alloc.allocator(), &.{ with_boringssl, "include" });
 
-        var buf_lib: [std.os.PATH_MAX]u8 = undefined;
+        var buf_lib: [std.posix.PATH_MAX]u8 = undefined;
         var buf_lib_alloc = std.heap.FixedBufferAllocator.init(&buf_lib);
         const path_lib = try std.fs.path.join(buf_lib_alloc.allocator(), &.{ with_boringssl, "lib" });
 
-        exe.addIncludePath(.{ .path = path_include });
-        exe.addLibraryPath(.{ .path = path_lib });
+        exe.addIncludePath(b.path(path_include));
+        exe.addLibraryPath(b.path(path_lib));
     } else {
-        exe.addIncludePath(.{ .path = "/opt/homebrew/opt/openssl@3/include" });
-        exe.addLibraryPath(.{ .path = "/opt/homebrew/opt/openssl@3/lib" });
+        exe.addIncludePath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/include" });
+        exe.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/opt/openssl@3/lib" });
     }
     exe.addCSourceFiles(.{ .files = exe_source_files });
     exe.linkLibrary(lib);
