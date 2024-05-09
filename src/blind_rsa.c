@@ -182,7 +182,7 @@ brsa_keypair_generate(BRSASecretKey *sk, BRSAPublicKey *pk, int modulus_bits)
         RSA_free(rsa);
         return -1;
     }
-    EVP_PKEY_assign_RSA(sk->evp_pkey, rsa);
+    EVP_PKEY_assign(sk->evp_pkey, EVP_PKEY_RSA, rsa);
 
     if (pk != NULL) {
         return brsa_publickey_recover(pk, sk);
