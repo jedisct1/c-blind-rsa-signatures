@@ -8,10 +8,15 @@ pub fn build(b: *std.Build) !void {
     const with_boringssl = b.option([]const u8, "with-boringssl", "Path to BoringSSL install") orelse "";
     lib_options.addOption([]const u8, "with-boringssl", with_boringssl);
 
-    const lib = b.addStaticLibrary(.{
-        .name = "brsa",
+    const lib_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
+    });
+
+    const lib = b.addLibrary(.{
+        .name = "brsa",
+        .root_module = lib_module,
+        .linkage = .static,
     });
 
     lib.linkLibC();
@@ -39,10 +44,14 @@ pub fn build(b: *std.Build) !void {
 
     const exe_source_files = &.{"src/test_blind_rsa.c"};
 
-    const exe = b.addExecutable(.{
-        .name = "c-blind-rsa-signatures",
+    const exe_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
+    });
+
+    const exe = b.addExecutable(.{
+        .name = "c-blind-rsa-signatures",
+        .root_module = exe_module,
     });
 
     if (with_boringssl.len > 0) {
