@@ -10,8 +10,6 @@ extern "C" {
 #include <openssl/crypto.h>
 #include <openssl/evp.h>
 
-#define BRSA_DEFAULT_SALT_LENGTH ((size_t) -1)
-
 // Hash functions
 typedef enum BRSAHashFunction {
     BRSA_SHA256,
@@ -19,10 +17,23 @@ typedef enum BRSAHashFunction {
     BRSA_SHA512,
 } BRSAHashFunction;
 
+// PSS mode: PSS uses hash-length salt, PSSZero uses no salt
+typedef enum BRSAPSSMode {
+    BRSA_PSS,      // Salt length = hash output length
+    BRSA_PSS_ZERO, // Salt length = 0
+} BRSAPSSMode;
+
+// Prepare mode: whether to randomize the message with a prefix
+typedef enum BRSAPrepareMode {
+    BRSA_RANDOMIZED,   // Add random prefix to message
+    BRSA_DETERMINISTIC // No random prefix
+} BRSAPrepareMode;
+
 // Context
 typedef struct BRSAContext {
-    const EVP_MD *evp_md;
-    size_t        salt_len;
+    const EVP_MD   *evp_md;
+    size_t          salt_len;
+    BRSAPrepareMode prepare_mode;
 } BRSAContext;
 
 // Blind message to be signed
@@ -71,15 +82,28 @@ typedef struct BRSAMessageRandomizer {
     uint8_t noise[32];
 } BRSAMessageRandomizer;
 
-// Initialize a standard context for probabilistic padding (recommended for most applications)
+// Combined result from blinding operation
+typedef struct BRSABlindingResult {
+    BRSABlindMessage       blind_message;
+    BRSABlindingSecret     secret;
+    BRSAMessageRandomizer *msg_randomizer; // NULL if prepare_mode is deterministic
+} BRSABlindingResult;
+
+// Initialize context for RSABSSA-SHA384-PSS-Randomized (RFC9474 default, recommended)
 void brsa_context_init_default(BRSAContext *context) __attribute__((nonnull));
 
-// Initialize a context for deterministic padding
+// Initialize context for RSABSSA-SHA384-PSSZERO-Randomized
+void brsa_context_init_pss_zero_randomized(BRSAContext *context) __attribute__((nonnull));
+
+// Initialize context for RSABSSA-SHA384-PSS-Deterministic
+void brsa_context_init_pss_deterministic(BRSAContext *context) __attribute__((nonnull));
+
+// Initialize context for RSABSSA-SHA384-PSSZERO-Deterministic
 void brsa_context_init_deterministic(BRSAContext *context) __attribute__((nonnull));
 
-// Initialize a context with custom parameters.
-// The salt length can be set to BRSA_DEFAULT_SALT_LENGTH to match the hash function output size
-int brsa_context_init_custom(BRSAContext *context, BRSAHashFunction hash_function, size_t salt_len)
+// Initialize a context with custom parameters
+int brsa_context_init_custom(BRSAContext *context, BRSAHashFunction hash_function,
+                             BRSAPSSMode pss_mode, BRSAPrepareMode prepare_mode)
     __attribute__((nonnull));
 
 // Generate a new key pair, and put the key pair into `sk` and a key with the public information
@@ -134,6 +158,9 @@ void brsa_blind_message_deinit(BRSABlindMessage *blind_message);
 // Free the internal structures of a secret blinding factor
 void brsa_blinding_secret_deinit(BRSABlindingSecret *secret);
 
+// Free the internal structures of a blinding result
+void brsa_blinding_result_deinit(BRSABlindingResult *result);
+
 // Free the internal structures of a blind signature
 void brsa_blind_signature_deinit(BRSABlindSignature *blind_sig);
 
@@ -141,32 +168,27 @@ void brsa_blind_signature_deinit(BRSABlindSignature *blind_sig);
 void brsa_signature_deinit(BRSASignature *blind_sig);
 
 // Generate a random message of length `msg_len`, blind it using the public
-// key `pk` and put the serialized blind message into `blind_message`, as well as
-// the secret blinding factor into `secret`
-int brsa_blind_message_generate(const BRSAContext *context, BRSABlindMessage *blind_message,
-                                uint8_t *msg, size_t msg_len, BRSABlindingSecret *secret,
-                                BRSAPublicKey *pk) __attribute__((nonnull));
+// key `pk` and put the result into `result`
+int brsa_blind_message_generate(const BRSAContext *context, BRSABlindingResult *result, uint8_t *msg,
+                                size_t msg_len, BRSAPublicKey *pk) __attribute__((nonnull));
 
 // Blind a message `msg` of length `msg_len` bytes, using the public RSA key
-// `pk`, and put the serialized blind message into `blind_message`, as well as
-// the secret blinding factor into `secret`
-int brsa_blind(const BRSAContext *context, BRSABlindMessage *blind_message,
-               BRSABlindingSecret *secret, BRSAMessageRandomizer *msg_randomizer, BRSAPublicKey *pk,
-               const uint8_t *msg, size_t msg_len) __attribute__((nonnull(1, 2, 3, 5, 6)));
+// `pk`, and put the result into `result`. Message randomization is controlled
+// by the context's prepare_mode.
+int brsa_blind(const BRSAContext *context, BRSABlindingResult *result, BRSAPublicKey *pk,
+               const uint8_t *msg, size_t msg_len) __attribute__((nonnull));
 
-// Compute a signature for a blind message `blind_message` of
-// length `blind_message_len` bytes using a key pair `sk`, and put the
+// Compute a signature for a blind message using a key pair `sk`, and put the
 // serialized signature into `blind_sig`
 int brsa_blind_sign(const BRSAContext *context, BRSABlindSignature *blind_sig, BRSASecretKey *sk,
                     const BRSABlindMessage *blind_message) __attribute__((nonnull));
 
-// Compute a signature for a message `msg` given the signature `blind(msg, secret)`.
+// Compute a signature for a message `msg` given the blinding result.
 // The signature of `msg` is put into `sig`. Note that before returning, the function
 // automatically verifies that the new signature is valid for the given public key.
 int brsa_finalize(const BRSAContext *context, BRSASignature *sig,
-                  const BRSABlindSignature *blind_sig, const BRSABlindingSecret *secret_,
-                  const BRSAMessageRandomizer *msg_randomizer, BRSAPublicKey *pk,
-                  const uint8_t *msg, size_t msg_len) __attribute__((nonnull(1, 2, 3, 4, 6, 7)));
+                  const BRSABlindSignature *blind_sig, const BRSABlindingResult *blinding_result,
+                  BRSAPublicKey *pk, const uint8_t *msg, size_t msg_len) __attribute__((nonnull));
 
 // Verify a non-blind signature `sig` for a message `msg` of length `msg_len` using the public key
 // `pk`. The function returns `0` if the signature if valid, and `-1` on error.

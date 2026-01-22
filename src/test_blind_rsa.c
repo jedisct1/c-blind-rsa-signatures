@@ -11,9 +11,9 @@
 #include "blind_rsa.h"
 
 static void
-test_default(void)
+test_pss_randomized(void)
 {
-    // Context
+    // RSABSSA-SHA384-PSS-Randomized (RFC9474 default)
     BRSAContext context;
     brsa_context_init_default(&context);
 
@@ -22,24 +22,20 @@ test_default(void)
     BRSAPublicKey pk;
     assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
 
-    // Noise is not required if the message is random.
-    // If it is not NULL, it will be automatically filled by brsa_blind_sign().
-    BRSAMessageRandomizer *msg_randomizer = NULL;
-
     // [CLIENT]: create a random message and blind it for the server whose public key is `pk`.
-    // The client must store the message and the secret.
+    // The client must store the message and the blinding result.
     uint8_t            msg[32];
     const size_t       msg_len = sizeof msg;
-    BRSABlindMessage   blind_msg;
-    BRSABlindingSecret client_secret;
-    assert(brsa_blind_message_generate(&context, &blind_msg, msg, msg_len, &client_secret, &pk) ==
-           0);
+    BRSABlindingResult blinding_result;
+    assert(brsa_blind_message_generate(&context, &blinding_result, msg, msg_len, &pk) == 0);
+
+    // Message randomizer should be set for randomized mode
+    assert(blinding_result.msg_randomizer != NULL);
 
     // [SERVER]: compute a signature for a blind message, to be sent to the client.
     // The client secret should not be sent to the server.
     BRSABlindSignature blind_sig;
-    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
-    brsa_blind_message_deinit(&blind_msg);
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blinding_result.blind_message) == 0);
 
     // [CLIENT]: later, when the client wants to redeem a signed blind message,
     // using the blinding secret, it can locally compute the signature of the
@@ -49,14 +45,13 @@ test_default(void)
     // Note that the finalization function also verifies that the signature is
     // correct for the server public key.
     BRSASignature sig;
-    assert(brsa_finalize(
-               &context, &sig, &blind_sig, &client_secret, msg_randomizer, &pk, msg, msg_len) == 0);
+    assert(brsa_finalize(&context, &sig, &blind_sig, &blinding_result, &pk, msg, msg_len) == 0);
     brsa_blind_signature_deinit(&blind_sig);
-    brsa_blinding_secret_deinit(&client_secret);
 
     // [SERVER]: a non-blind signature can be verified using the server's public key.
-    assert(brsa_verify(&context, &sig, &pk, msg_randomizer, msg, msg_len) == 0);
+    assert(brsa_verify(&context, &sig, &pk, blinding_result.msg_randomizer, msg, msg_len) == 0);
     brsa_signature_deinit(&sig);
+    brsa_blinding_result_deinit(&blinding_result);
 
     // Get a key identifier
     uint8_t key_id[4];
@@ -82,96 +77,177 @@ test_default(void)
 }
 
 static void
-test_deterministic(void)
+test_pss_zero_randomized(void)
 {
-    // Context
+    // RSABSSA-SHA384-PSSZERO-Randomized
     BRSAContext context;
-    brsa_context_init_deterministic(&context);
+    brsa_context_init_pss_zero_randomized(&context);
 
-    // [SERVER]: Generate a RSA-2048 key pair
     BRSASecretKey sk;
     BRSAPublicKey pk;
     assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
 
-    // Noise is not required if the message is random.
-    BRSAMessageRandomizer *msg_randomizer = NULL;
-
-    // [CLIENT]: create a random message and blind it for the server whose public key is `pk`.
-    // The client must store the message and the secret.
     uint8_t            msg[32];
     const size_t       msg_len = sizeof msg;
-    BRSABlindMessage   blind_msg;
-    BRSABlindingSecret client_secret;
-    assert(brsa_blind_message_generate(&context, &blind_msg, msg, msg_len, &client_secret, &pk) ==
-           0);
+    BRSABlindingResult blinding_result;
+    assert(brsa_blind_message_generate(&context, &blinding_result, msg, msg_len, &pk) == 0);
 
-    // [SERVER]: compute a signature for a blind message, to be sent to the client.
-    // The client secret should not be sent to the server.
+    // Message randomizer should be set for randomized mode
+    assert(blinding_result.msg_randomizer != NULL);
+
     BRSABlindSignature blind_sig;
-    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blinding_result.blind_message) == 0);
 
-    // [CLIENT]: later, when the client wants to redeem a signed blind message,
-    // using the blinding secret, it can locally compute the signature of the
-    // original message.
-    // The client then owns a new valid (message, signature) pair, and the
-    // server cannot link it to a previous(blinded message, blind signature) pair.
-    // Note that the finalization function also verifies that the signature is
-    // correct for the server public key.
     BRSASignature sig;
-    assert(brsa_finalize(
-               &context, &sig, &blind_sig, &client_secret, msg_randomizer, &pk, msg, msg_len) == 0);
-    brsa_blinding_secret_deinit(&client_secret);
+    assert(brsa_finalize(&context, &sig, &blind_sig, &blinding_result, &pk, msg, msg_len) == 0);
+    brsa_blind_signature_deinit(&blind_sig);
 
-    // [SERVER]: a non-blind signature can be verified using the server's public key.
-    assert(brsa_verify(&context, &sig, &pk, msg_randomizer, msg, msg_len) == 0);
+    assert(brsa_verify(&context, &sig, &pk, blinding_result.msg_randomizer, msg, msg_len) == 0);
+    brsa_signature_deinit(&sig);
+    brsa_blinding_result_deinit(&blinding_result);
+
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
+}
+
+static void
+test_pss_deterministic(void)
+{
+    // RSABSSA-SHA384-PSS-Deterministic
+    BRSAContext context;
+    brsa_context_init_pss_deterministic(&context);
+
+    BRSASecretKey sk;
+    BRSAPublicKey pk;
+    assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
+
+    uint8_t            msg[32];
+    const size_t       msg_len = sizeof msg;
+    BRSABlindingResult blinding_result;
+    assert(brsa_blind_message_generate(&context, &blinding_result, msg, msg_len, &pk) == 0);
+
+    // Message randomizer should be NULL for deterministic mode
+    assert(blinding_result.msg_randomizer == NULL);
+
+    BRSABlindSignature blind_sig;
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blinding_result.blind_message) == 0);
+
+    BRSASignature sig;
+    assert(brsa_finalize(&context, &sig, &blind_sig, &blinding_result, &pk, msg, msg_len) == 0);
+    brsa_blind_signature_deinit(&blind_sig);
+
+    assert(brsa_verify(&context, &sig, &pk, blinding_result.msg_randomizer, msg, msg_len) == 0);
+    brsa_signature_deinit(&sig);
+    brsa_blinding_result_deinit(&blinding_result);
+
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
+}
+
+static void
+test_pss_zero_deterministic(void)
+{
+    // RSABSSA-SHA384-PSSZERO-Deterministic
+    BRSAContext context;
+    brsa_context_init_deterministic(&context);
+
+    BRSASecretKey sk;
+    BRSAPublicKey pk;
+    assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
+
+    // Message randomizer should be NULL for deterministic mode
+    uint8_t            msg[32];
+    const size_t       msg_len = sizeof msg;
+    BRSABlindingResult blinding_result;
+    assert(brsa_blind_message_generate(&context, &blinding_result, msg, msg_len, &pk) == 0);
+
+    // Message randomizer should be NULL for deterministic mode
+    assert(blinding_result.msg_randomizer == NULL);
+
+    BRSABlindSignature blind_sig;
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blinding_result.blind_message) == 0);
+
+    BRSASignature sig;
+    assert(brsa_finalize(&context, &sig, &blind_sig, &blinding_result, &pk, msg, msg_len) == 0);
+
+    assert(brsa_verify(&context, &sig, &pk, blinding_result.msg_randomizer, msg, msg_len) == 0);
     brsa_signature_deinit(&sig);
 
     // [CLIENT]: sign the previous message again.
     BRSABlindSignature blind_sig2;
-    assert(brsa_blind_sign(&context, &blind_sig2, &sk, &blind_msg) == 0);
-    brsa_blind_message_deinit(&blind_msg);
-    brsa_secretkey_deinit(&sk);
-    brsa_publickey_deinit(&pk);
+    assert(brsa_blind_sign(&context, &blind_sig2, &sk, &blinding_result.blind_message) == 0);
 
-    // Check that the blind signature is the same as the previous one.
+    // Check that the blind signature is the same as the previous one (deterministic).
     assert(memcmp(blind_sig.blind_sig, blind_sig2.blind_sig, blind_sig.blind_sig_len) == 0);
 
     brsa_blind_signature_deinit(&blind_sig);
     brsa_blind_signature_deinit(&blind_sig2);
+    brsa_blinding_result_deinit(&blinding_result);
+
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
 }
 
 static void
 test_custom_parameters(void)
 {
+    // Custom: SHA256 with PSS (salt=hash length) and randomized
     BRSAContext context;
-    brsa_context_init_custom(&context, BRSA_SHA256, 48);
+    assert(brsa_context_init_custom(&context, BRSA_SHA256, BRSA_PSS, BRSA_RANDOMIZED) == 0);
 
     BRSASecretKey sk;
     BRSAPublicKey pk;
     assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
 
-    // Noise is not required if the message is random.
-    BRSAMessageRandomizer *msg_randomizer = NULL;
-
     uint8_t            msg[32];
     const size_t       msg_len = sizeof msg;
-    BRSABlindMessage   blind_msg;
-    BRSABlindingSecret client_secret;
-    assert(brsa_blind_message_generate(&context, &blind_msg, msg, msg_len, &client_secret, &pk) ==
-           0);
+    BRSABlindingResult blinding_result;
+    assert(brsa_blind_message_generate(&context, &blinding_result, msg, msg_len, &pk) == 0);
 
     BRSABlindSignature blind_sig;
-    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blind_msg) == 0);
-    brsa_blind_message_deinit(&blind_msg);
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blinding_result.blind_message) == 0);
 
     BRSASignature sig;
-    assert(brsa_finalize(
-               &context, &sig, &blind_sig, &client_secret, msg_randomizer, &pk, msg, msg_len) == 0);
+    assert(brsa_finalize(&context, &sig, &blind_sig, &blinding_result, &pk, msg, msg_len) == 0);
     brsa_blind_signature_deinit(&blind_sig);
-    brsa_blinding_secret_deinit(&client_secret);
 
-    assert(brsa_verify(&context, &sig, &pk, msg_randomizer, msg, msg_len) == 0);
+    assert(brsa_verify(&context, &sig, &pk, blinding_result.msg_randomizer, msg, msg_len) == 0);
     brsa_signature_deinit(&sig);
+    brsa_blinding_result_deinit(&blinding_result);
+
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
+}
+
+static void
+test_blind_known_message(void)
+{
+    // Test brsa_blind directly (non-random message)
+    BRSAContext context;
+    brsa_context_init_default(&context);
+
+    BRSASecretKey sk;
+    BRSAPublicKey pk;
+    assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
+
+    const char  *msg     = "Hello, World!";
+    const size_t msg_len = strlen(msg);
+
+    BRSABlindingResult blinding_result;
+    assert(brsa_blind(&context, &blinding_result, &pk, (const uint8_t *) msg, msg_len) == 0);
+
+    BRSABlindSignature blind_sig;
+    assert(brsa_blind_sign(&context, &blind_sig, &sk, &blinding_result.blind_message) == 0);
+
+    BRSASignature sig;
+    assert(brsa_finalize(&context, &sig, &blind_sig, &blinding_result, &pk, (const uint8_t *) msg,
+                         msg_len) == 0);
+    brsa_blind_signature_deinit(&blind_sig);
+
+    assert(brsa_verify(&context, &sig, &pk, blinding_result.msg_randomizer, (const uint8_t *) msg,
+                       msg_len) == 0);
+    brsa_signature_deinit(&sig);
+    brsa_blinding_result_deinit(&blinding_result);
 
     brsa_secretkey_deinit(&sk);
     brsa_publickey_deinit(&pk);
@@ -180,9 +256,13 @@ test_custom_parameters(void)
 int
 main(void)
 {
-    test_default();
-    test_deterministic();
+    test_pss_randomized();
+    test_pss_zero_randomized();
+    test_pss_deterministic();
+    test_pss_zero_deterministic();
     test_custom_parameters();
+    test_blind_known_message();
 
+    puts("All tests passed.");
     return 0;
 }
