@@ -72,6 +72,81 @@ _rsa_e(const EVP_PKEY *evp_pkey)
 #endif
 }
 
+static BIGNUM *
+_rsa_d(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "d", &bn);
+    return bn;
+#else
+    return BN_dup(RSA_get0_d(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey)));
+#endif
+}
+
+static BIGNUM *
+_rsa_p(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "rsa-factor1", &bn);
+    return bn;
+#else
+    return BN_dup(RSA_get0_p(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey)));
+#endif
+}
+
+static BIGNUM *
+_rsa_q(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "rsa-factor2", &bn);
+    return bn;
+#else
+    return BN_dup(RSA_get0_q(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey)));
+#endif
+}
+
+static BIGNUM *
+_rsa_dmp1(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "rsa-exponent1", &bn);
+    return bn;
+#else
+    const BIGNUM *dmp1 = RSA_get0_dmp1(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey));
+    return dmp1 ? BN_dup(dmp1) : NULL;
+#endif
+}
+
+static BIGNUM *
+_rsa_dmq1(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "rsa-exponent2", &bn);
+    return bn;
+#else
+    const BIGNUM *dmq1 = RSA_get0_dmq1(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey));
+    return dmq1 ? BN_dup(dmq1) : NULL;
+#endif
+}
+
+static BIGNUM *
+_rsa_iqmp(const EVP_PKEY *evp_pkey)
+{
+#if OPENSSL_VERSION_MAJOR >= 3
+    BIGNUM *bn = NULL;
+    EVP_PKEY_get_bn_param(evp_pkey, "rsa-coefficient1", &bn);
+    return bn;
+#else
+    const BIGNUM *iqmp = RSA_get0_iqmp(EVP_PKEY_get0_RSA((EVP_PKEY *) evp_pkey));
+    return iqmp ? BN_dup(iqmp) : NULL;
+#endif
+}
+
 static BN_MONT_CTX *
 new_mont_domain(const BIGNUM *n)
 {
@@ -985,4 +1060,80 @@ brsa_publickey_id(const BRSAContext *context, uint8_t *id, size_t id_len, const 
     memcpy(id, h, out_len);
 
     return 0;
+}
+
+static int
+_bn_to_bytes(BIGNUM *bn, uint8_t *out, size_t out_len)
+{
+    if (bn == NULL) {
+        return -1;
+    }
+    const int len = BN_num_bytes(bn);
+    if (len < 0 || (size_t) len > out_len) {
+        BN_free(bn);
+        return -1;
+    }
+    BN_bn2bin(bn, out);
+    BN_free(bn);
+    return len;
+}
+
+int
+brsa_publickey_n(const BRSAPublicKey *pk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_n(pk->evp_pkey), out, out_len);
+}
+
+int
+brsa_publickey_e(const BRSAPublicKey *pk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_e(pk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_n(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_n(sk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_e(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_e(sk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_d(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_d(sk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_p(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_p(sk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_q(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_q(sk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_dmp1(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_dmp1(sk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_dmq1(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_dmq1(sk->evp_pkey), out, out_len);
+}
+
+int
+brsa_secretkey_iqmp(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+{
+    return _bn_to_bytes(_rsa_iqmp(sk->evp_pkey), out, out_len);
 }

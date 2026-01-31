@@ -143,6 +143,49 @@ int brsa_publickey_import_spki(const BRSAContext *context, BRSAPublicKey *pk, co
 int brsa_publickey_id(const BRSAContext *context, uint8_t *id, size_t id_len,
                       const BRSAPublicKey *pk) __attribute__((nonnull));
 
+// Get the modulus (n) from a public key as big-endian bytes.
+// Returns the actual length written, or -1 on error.
+int brsa_publickey_n(const BRSAPublicKey *pk, uint8_t *out, size_t out_len) __attribute__((nonnull));
+
+// Get the public exponent (e) from a public key as big-endian bytes.
+// Returns the actual length written, or -1 on error.
+int brsa_publickey_e(const BRSAPublicKey *pk, uint8_t *out, size_t out_len) __attribute__((nonnull));
+
+// Get the modulus (n) from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 on error.
+int brsa_secretkey_n(const BRSASecretKey *sk, uint8_t *out, size_t out_len) __attribute__((nonnull));
+
+// Get the public exponent (e) from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 on error.
+int brsa_secretkey_e(const BRSASecretKey *sk, uint8_t *out, size_t out_len) __attribute__((nonnull));
+
+// Get the private exponent (d) from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 on error.
+int brsa_secretkey_d(const BRSASecretKey *sk, uint8_t *out, size_t out_len) __attribute__((nonnull));
+
+// Get the first prime factor (p) from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 on error.
+int brsa_secretkey_p(const BRSASecretKey *sk, uint8_t *out, size_t out_len) __attribute__((nonnull));
+
+// Get the second prime factor (q) from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 on error.
+int brsa_secretkey_q(const BRSASecretKey *sk, uint8_t *out, size_t out_len) __attribute__((nonnull));
+
+// Get d mod (p-1) from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 if not available.
+int brsa_secretkey_dmp1(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+    __attribute__((nonnull));
+
+// Get d mod (q-1) from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 if not available.
+int brsa_secretkey_dmq1(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+    __attribute__((nonnull));
+
+// Get q^(-1) mod p from a secret key as big-endian bytes.
+// Returns the actual length written, or -1 if not available.
+int brsa_secretkey_iqmp(const BRSASecretKey *sk, uint8_t *out, size_t out_len)
+    __attribute__((nonnull));
+
 // Free the internal structures of a secret key
 void brsa_secretkey_deinit(BRSASecretKey *sk);
 

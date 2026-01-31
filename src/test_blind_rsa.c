@@ -220,6 +220,61 @@ test_custom_parameters(void)
 }
 
 static void
+test_key_components(void)
+{
+    BRSASecretKey sk;
+    BRSAPublicKey pk;
+    assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
+
+    uint8_t buf[512];
+
+    // Test public key components
+    int n_len = brsa_publickey_n(&pk, buf, sizeof buf);
+    assert(n_len > 0);
+    assert(n_len == 256); // 2048 bits = 256 bytes
+
+    int e_len = brsa_publickey_e(&pk, buf, sizeof buf);
+    assert(e_len > 0);
+    assert(e_len <= 4); // e is typically 65537 (3 bytes) or smaller
+
+    // Test secret key components
+    int sk_n_len = brsa_secretkey_n(&sk, buf, sizeof buf);
+    assert(sk_n_len == n_len);
+
+    int sk_e_len = brsa_secretkey_e(&sk, buf, sizeof buf);
+    assert(sk_e_len == e_len);
+
+    int d_len = brsa_secretkey_d(&sk, buf, sizeof buf);
+    assert(d_len > 0);
+    assert(d_len <= 256);
+
+    int p_len = brsa_secretkey_p(&sk, buf, sizeof buf);
+    assert(p_len > 0);
+    assert(p_len == 128); // Half of modulus size
+
+    int q_len = brsa_secretkey_q(&sk, buf, sizeof buf);
+    assert(q_len > 0);
+    assert(q_len == 128);
+
+    // CRT components
+    int dmp1_len = brsa_secretkey_dmp1(&sk, buf, sizeof buf);
+    assert(dmp1_len > 0);
+
+    int dmq1_len = brsa_secretkey_dmq1(&sk, buf, sizeof buf);
+    assert(dmq1_len > 0);
+
+    int iqmp_len = brsa_secretkey_iqmp(&sk, buf, sizeof buf);
+    assert(iqmp_len > 0);
+
+    // Test output buffer too small
+    uint8_t small_buf[10];
+    assert(brsa_publickey_n(&pk, small_buf, sizeof small_buf) == -1);
+
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
+}
+
+static void
 test_blind_known_message(void)
 {
     // Test brsa_blind directly (non-random message)
@@ -261,6 +316,7 @@ main(void)
     test_pss_deterministic();
     test_pss_zero_deterministic();
     test_custom_parameters();
+    test_key_components();
     test_blind_known_message();
 
     puts("All tests passed.");

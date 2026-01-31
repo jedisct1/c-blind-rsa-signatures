@@ -145,6 +145,30 @@ brsa_serializedkey_deinit(&pk_der);
 
 All these functions return `0` on success and `-1` on error.
 
+## Accessing RSA Key Components
+
+Raw RSA key components can be extracted as big-endian byte arrays:
+
+```c
+uint8_t buf[512];
+
+// Public key components
+int n_len = brsa_publickey_n(&pk, buf, sizeof buf);  // modulus
+int e_len = brsa_publickey_e(&pk, buf, sizeof buf);  // public exponent
+
+// Secret key components
+int n_len  = brsa_secretkey_n(&sk, buf, sizeof buf);     // modulus
+int e_len  = brsa_secretkey_e(&sk, buf, sizeof buf);     // public exponent
+int d_len  = brsa_secretkey_d(&sk, buf, sizeof buf);     // private exponent
+int p_len  = brsa_secretkey_p(&sk, buf, sizeof buf);     // first prime factor
+int q_len  = brsa_secretkey_q(&sk, buf, sizeof buf);     // second prime factor
+int dp_len = brsa_secretkey_dmp1(&sk, buf, sizeof buf);  // d mod (p-1)
+int dq_len = brsa_secretkey_dmq1(&sk, buf, sizeof buf);  // d mod (q-1)
+int qi_len = brsa_secretkey_iqmp(&sk, buf, sizeof buf);  // q^(-1) mod p
+```
+
+These functions return the number of bytes written on success, or `-1` on error (buffer too small or parameter not available). The CRT parameters (dmp1, dmq1, iqmp) may not be available if the key was imported without them.
+
 ## For other languages
 
 * [Zig](https://github.com/jedisct1/zig-blind-rsa-signatures)
