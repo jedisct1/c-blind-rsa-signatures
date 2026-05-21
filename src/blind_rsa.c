@@ -530,7 +530,8 @@ _hash(const EVP_MD *evp_md, const BRSAMessageRandomizer *prefix, uint8_t *msg_ha
         if (EVP_DigestInit(hash_ctx, evp_md) != ERR_LIB_NONE) {
             break;
         }
-        if (prefix != NULL && EVP_DigestUpdate(hash_ctx, msg, msg_len) != ERR_LIB_NONE) {
+        if (prefix != NULL &&
+            EVP_DigestUpdate(hash_ctx, prefix->noise, sizeof prefix->noise) != ERR_LIB_NONE) {
             break;
         }
         if (EVP_DigestUpdate(hash_ctx, msg, msg_len) != ERR_LIB_NONE ||
@@ -597,7 +598,7 @@ _blind(BRSABlindMessage *blind_message, BRSABlindingSecret *secret_, BRSAPublicK
         BN_free(n);
         return -1;
     }
-    if (BN_mod_exp_mont(x, secret_inv, e, n, bn_ctx, pk->mont_ctx) != ERR_LIB_NONE) {
+    if (BN_mod_exp_mont_consttime(x, secret_inv, e, n, bn_ctx, pk->mont_ctx) != ERR_LIB_NONE) {
         BN_free(e);
         BN_free(n);
         return -1;
@@ -803,6 +804,10 @@ rsassa_pss_verify(const BRSAContext *context, const BRSASignature *sig, BRSAPubl
     const size_t modulus_bytes = _rsa_size(pk->evp_pkey);
     if (sig->sig_len != modulus_bytes) {
         ERR_put_error(ERR_LIB_RSA, 0, RSA_R_DATA_TOO_LARGE_FOR_MODULUS, __FILE__, __LINE__);
+        return -1;
+    }
+    if ((msg_randomizer != NULL) != (context->prepare_mode == BRSA_RANDOMIZED)) {
+        ERR_put_error(ERR_LIB_RSA, 0, RSA_R_INVALID_PADDING_MODE, __FILE__, __LINE__);
         return -1;
     }
 

@@ -308,6 +308,75 @@ test_blind_known_message(void)
     brsa_publickey_deinit(&pk);
 }
 
+static void
+test_verifier_enforces_prepare_mode(void)
+{
+    BRSASecretKey sk;
+    BRSAPublicKey pk;
+    assert(brsa_keypair_generate(&sk, &pk, 2048) == 0);
+
+    const char  *msg     = "Hello, World!";
+    const size_t msg_len = strlen(msg);
+
+    // Produce a valid randomized-mode signature.
+    BRSAContext randomized_ctx;
+    brsa_context_init_default(&randomized_ctx);
+    BRSABlindingResult randomized_br;
+    assert(brsa_blind(&randomized_ctx, &randomized_br, &pk, (const uint8_t *) msg, msg_len) == 0);
+    assert(randomized_br.msg_randomizer != NULL);
+    BRSABlindSignature randomized_blind_sig;
+    assert(brsa_blind_sign(&randomized_ctx, &randomized_blind_sig, &sk,
+                           &randomized_br.blind_message) == 0);
+    BRSASignature randomized_sig;
+    assert(brsa_finalize(&randomized_ctx, &randomized_sig, &randomized_blind_sig, &randomized_br,
+                         &pk, (const uint8_t *) msg, msg_len) == 0);
+    brsa_blind_signature_deinit(&randomized_blind_sig);
+
+    // Produce a valid deterministic-mode signature over the same message.
+    BRSAContext deterministic_ctx;
+    brsa_context_init_pss_deterministic(&deterministic_ctx);
+    BRSABlindingResult deterministic_br;
+    assert(brsa_blind(&deterministic_ctx, &deterministic_br, &pk, (const uint8_t *) msg, msg_len) ==
+           0);
+    assert(deterministic_br.msg_randomizer == NULL);
+    BRSABlindSignature deterministic_blind_sig;
+    assert(brsa_blind_sign(&deterministic_ctx, &deterministic_blind_sig, &sk,
+                           &deterministic_br.blind_message) == 0);
+    BRSASignature deterministic_sig;
+    assert(brsa_finalize(&deterministic_ctx, &deterministic_sig, &deterministic_blind_sig,
+                         &deterministic_br, &pk, (const uint8_t *) msg, msg_len) == 0);
+    brsa_blind_signature_deinit(&deterministic_blind_sig);
+
+    // A deterministic verifier must reject a randomized-mode signature, even when handed the
+    // matching randomizer.
+    assert(brsa_verify(&deterministic_ctx, &randomized_sig, &pk, randomized_br.msg_randomizer,
+                       (const uint8_t *) msg, msg_len) == -1);
+
+    // A randomized verifier must reject a deterministic-mode signature when no randomizer is
+    // supplied — without the mode check, this would fail open.
+    assert(brsa_verify(&randomized_ctx, &deterministic_sig, &pk, NULL, (const uint8_t *) msg,
+                       msg_len) == -1);
+
+    // A bogus randomizer must not verify (regression test for the _hash bug where the prefix
+    // bytes were ignored).
+    BRSAMessageRandomizer bogus = { 0 };
+    assert(brsa_verify(&randomized_ctx, &randomized_sig, &pk, &bogus, (const uint8_t *) msg,
+                       msg_len) == -1);
+
+    // Sanity: each signature still verifies under its own mode with the matching randomizer.
+    assert(brsa_verify(&randomized_ctx, &randomized_sig, &pk, randomized_br.msg_randomizer,
+                       (const uint8_t *) msg, msg_len) == 0);
+    assert(brsa_verify(&deterministic_ctx, &deterministic_sig, &pk, NULL, (const uint8_t *) msg,
+                       msg_len) == 0);
+
+    brsa_signature_deinit(&randomized_sig);
+    brsa_signature_deinit(&deterministic_sig);
+    brsa_blinding_result_deinit(&randomized_br);
+    brsa_blinding_result_deinit(&deterministic_br);
+    brsa_secretkey_deinit(&sk);
+    brsa_publickey_deinit(&pk);
+}
+
 int
 main(void)
 {
@@ -318,6 +387,7 @@ main(void)
     test_custom_parameters();
     test_key_components();
     test_blind_known_message();
+    test_verifier_enforces_prepare_mode();
 
     puts("All tests passed.");
     return 0;
